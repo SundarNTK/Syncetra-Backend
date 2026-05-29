@@ -95,15 +95,21 @@ const createMember = async (req, res) => {
     const setupToken = signSetupToken(user._id);
     const setupUrl = buildSetupUrl(setupToken);
 
-    const emailResult = await sendPasswordSetupEmail(normalizedEmail, {
-      name: body.name,
-      setupUrl,
-    });
+    // Do not block the HTTP response on SMTP — Render free tier often blocks Gmail ports.
+    sendPasswordSetupEmail(normalizedEmail, { name: body.name, setupUrl })
+      .then((result) => {
+        if (result?.sent) {
+          console.log(`[Email] Password setup sent to ${normalizedEmail}`);
+        }
+      })
+      .catch((err) => {
+        console.error(`[Email] Password setup failed for ${normalizedEmail}:`, err?.message || err);
+      });
 
     return responseHandler({
       res,
       statusCode: 201,
-      message: "Member created. Password setup email sent.",
+      message: "Member created. Password setup email is being sent.",
       response: {
         user: {
           id: user._id,
@@ -114,7 +120,7 @@ const createMember = async (req, res) => {
           role: user.role,
           hasPassword: false,
         },
-        emailSent: emailResult?.sent ?? false,
+        emailSent: false,
         ...(Env.APP_ENV !== "PROD" ? { setupUrl } : {}),
       },
     });
