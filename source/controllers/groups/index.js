@@ -1,0 +1,319 @@
+const mongoose = require("mongoose");
+const db = require("../../utilities/constants/db-name");
+const messages = require("../../utilities/constants/messages");
+const validateRequest = require("../../utilities/validations/validate-request");
+const responseHandler = require("../../utilities/handlers/response-handler");
+const exceptionHandler = require("../../utilities/handlers/exception-handler");
+const queryHandler = require("../../utilities/handlers/query-handler");
+const {
+  find,
+  findOne,
+  insertNewDocument,
+  updateDocument,
+} = require("../../utilities/helpers/mongo-query");
+const {
+  createGroupSchema,
+  updateGroupSchema,
+  addMemberSchema,
+  updateMemberSchema,
+} = require("./request-objects");
+const { sendMemberInviteEmail, isGmailConfigured } = require("../../service/email");
+
+const normalizeEmail = (email) => email.trim().toLowerCase();
+
+const resolveMembers = async (members = [], groupName = "") => {
+  const memberIds = [];
+  const resolved = [];
+  for (const m of members) {
+    const email = normalizeEmail(m.email);
+    let user = await findOne(db.users, {
+      $or: [{ email }, { mobileNumber: m.mobileNumber }],
+      isDeleted: false,
+    });
+
+    const isNew = !user;
+    if (!user) {
+      user = await insertNewDocument(db.users, {
+        name: m.name || `User ${m.mobileNumber.slice(-4)}`,
+        email,
+        mobileNumber: m.mobileNumber,
+        role: "user",
+      });
+    } else if (!user.email) {
+      await updateDocument(db.users, { _id: user._id }, { email, name: m.name || user.name });
+    }
+
+    resolved.push({ id: user._id, email, name: m.name, mobileNumber: m.mobileNumber, isNew });
+  }
+
+  if (groupName && isGmailConfigured()) {
+    for (const r of resolved) {
+      try {
+        await sendMemberInviteEmail(r.email, {
+          name: r.name,
+          groupName,
+          mobileNumber: r.mobileNumber,
+        });
+      } catch (err) {
+        console.warn(`Invite email failed for ${r.email}:`, err.message);
+      }
+    }
+  }
+
+  return resolved.map((r) => r.id);
+};
+
+const createGroup = async (req, res) => {
+  try {
+    const body = validateRequest({ schema: createGroupSchema, body: req.body });
+    const group = await insertNewDocument(db.groups, {
+      groupName: body.groupName,
+      tripId: body.tripId || null,
+      createdBy: req.user.userId,
+      members: [],
+    });
+
+    const memberIds = await resolveMembers(body.members || [], body.groupName);
+    await updateDocument(db.groups, { _id: group._id }, { members: memberIds });
+    group.members = memberIds;
+
+    return responseHandler({
+      res,
+      statusCode: 201,
+      message: messages.CREATED,
+      response: group,
+    });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
+const findAllGroups = async (req, res) => {
+  try {
+    const { searchQuery, sortQuery } = queryHandler(req);
+    const groups = await find(db.groups, searchQuery, sortQuery);
+    return responseHandler({
+      res,
+      response: groups,
+      recordsCount: groups.length,
+    });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
+const findOneGroup = async (req, res) => {
+  try {
+    const group = await findOne(db.groups, {
+      _id: req.params.id,
+      isDeleted: false,
+    });
+    if (!group) throw messages.NOT_FOUND;
+
+    const members = await find(db.users, {
+      _id: { $in: group.members || [] },
+      isDeleted: false,
+    });
+
+    const memberDetails = members.map((m) => ({
+      ...m,
+      hasFcmToken: !!(m.fcmToken && m.fcmToken.length > 0),
+      alarmReady: !!(m.fcmToken && m.fcmToken.length > 0),
+    }));
+
+    return responseHandler({
+      res,
+      response: { ...group, memberDetails },
+    });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
+const updateGroup = async (req, res) => {
+  try {
+    const body = validateRequest({ schema: updateGroupSchema, body: req.body });
+    const update = {};
+
+    if (body.groupName) update.groupName = body.groupName;
+    if (body.tripId !== undefined) update.tripId = body.tripId || null;
+    if (body.members) {
+      const grp = await findOne(db.groups, { _id: req.params.id });
+      update.members = await resolveMembers(
+        body.members,
+        body.groupName || grp?.groupName
+      );
+    }
+
+    const group = await updateDocument(
+      db.groups,
+      { _id: req.params.id, isDeleted: false },
+      update
+    );
+    if (!group) throw messages.NOT_FOUND;
+
+    return responseHandler({ res, message: messages.UPDATED, response: group });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
+const deleteGroup = async (req, res) => {
+  try {
+    const group = await updateDocument(
+      db.groups,
+      { _id: req.params.id },
+      { isDeleted: true }
+    );
+    if (!group) throw messages.NOT_FOUND;
+    return responseHandler({ res, message: messages.DELETED });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
+const addMember = async (req, res) => {
+  try {
+    const body = validateRequest({ schema: addMemberSchema, body: req.body });
+    const group = await findOne(db.groups, {
+      _id: req.params.id,
+      isDeleted: false,
+    });
+    if (!group) throw messages.NOT_FOUND;
+
+    let newMemberId;
+    if (body.userId) {
+      // Add an existing registered user directly by their _id
+      const user = await findOne(db.users, { _id: body.userId, isDeleted: false });
+      if (!user) throw "User not found.";
+      newMemberId = user._id;
+    } else {
+      // Legacy: create/find user by name + email + mobile
+      const [resolved] = await resolveMembers(
+        [{ name: body.name, email: body.email, mobileNumber: body.mobileNumber }],
+        group.groupName
+      );
+      newMemberId = resolved;
+    }
+
+    const members = [...(group.members || []).map(String), newMemberId.toString()];
+    const uniqueMembers = [...new Set(members)];
+
+    const updated = await updateDocument(
+      db.groups,
+      { _id: group._id },
+      { members: uniqueMembers.map((id) => new mongoose.Types.ObjectId(id)) }
+    );
+
+    return responseHandler({ res, message: messages.UPDATED, response: updated });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
+const updateMember = async (req, res) => {
+  try {
+    const { id: groupId, memberId } = req.params;
+    const body = validateRequest({ schema: updateMemberSchema, body: req.body });
+
+    const group = await findOne(db.groups, {
+      _id: groupId,
+      isDeleted: false,
+    });
+    if (!group) throw messages.NOT_FOUND;
+
+    const memberInGroup = (group.members || []).some(
+      (m) => m.toString() === memberId
+    );
+    if (!memberInGroup) throw "Member not found in this group";
+
+    const updated = await updateDocument(
+      db.users,
+      { _id: memberId, isDeleted: false },
+      { name: body.name, mobileNumber: body.mobileNumber }
+    );
+    if (!updated) throw messages.NOT_FOUND;
+
+    return responseHandler({
+      res,
+      message: messages.UPDATED,
+      response: {
+        ...updated,
+        hasFcmToken: !!(updated.fcmToken && updated.fcmToken.length > 0),
+      },
+    });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
+const removeMember = async (req, res) => {
+  try {
+    const { id: groupId, memberId } = req.params;
+
+    const group = await findOne(db.groups, {
+      _id: groupId,
+      isDeleted: false,
+    });
+    if (!group) throw messages.NOT_FOUND;
+
+    const members = (group.members || [])
+      .map((m) => m.toString())
+      .filter((m) => m !== memberId);
+
+    await updateDocument(
+      db.groups,
+      { _id: groupId },
+      { members: members.map((id) => new mongoose.Types.ObjectId(id)) }
+    );
+
+    return responseHandler({ res, message: "Member removed from group" });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
+const findUserGroups = async (req, res) => {
+  try {
+    const userId = new mongoose.Types.ObjectId(req.user.userId);
+    const groups = await find(db.groups, {
+      members: userId,
+      isDeleted: false,
+    });
+
+    // Batch-fetch all member user documents across all groups in one query
+    const allIds = [...new Set(groups.flatMap((g) => (g.members || []).map(String)))];
+    const users = allIds.length
+      ? await find(db.users, { _id: { $in: allIds }, isDeleted: false })
+      : [];
+    const userMap = Object.fromEntries(users.map((u) => [String(u._id), u]));
+
+    const enriched = groups.map((g) => ({
+      ...g,
+      memberDetails: (g.members || []).map((id) => {
+        const u = userMap[String(id)];
+        return u ? { _id: u._id, name: u.name, email: u.email } : { _id: id, name: "Unknown" };
+      }),
+    }));
+
+    return responseHandler({
+      res,
+      response: enriched,
+      recordsCount: enriched.length,
+    });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
+module.exports = {
+  createGroup,
+  findAllGroups,
+  findOneGroup,
+  updateGroup,
+  deleteGroup,
+  addMember,
+  updateMember,
+  removeMember,
+  findUserGroups,
+};

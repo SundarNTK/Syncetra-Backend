@@ -1,0 +1,33 @@
+const Env = {
+  PORT: process.env.PORT || 4010,
+  NODE_ENV: process.env.NODE_ENV || "development",
+  APP_ENV: (process.env.APP_ENV || "DEV").toUpperCase(),
+  GMAIL_USER: process.env.GMAIL_USER,
+  GMAIL_APP_PASSWORD: process.env.GMAIL_APP_PASSWORD,
+  EMAIL_FROM: process.env.EMAIL_FROM,
+  TEST_ALARM_SECRET: process.env.TEST_ALARM_SECRET,
+  BASE_PATH_ADMIN: process.env.BASE_PATH_ADMIN || "/api/v1/alarm/admin",
+  BASE_PATH_USER: process.env.BASE_PATH_USER || "/api/v1/alarm/user",
+  MONGODB_URI: process.env.MONGODB_URI,
+  DB_USERNAME: process.env.DB_USERNAME,
+  DB_PASSWORD: process.env.DB_PASSWORD,
+  DB_HOST: process.env.DB_HOST,
+  DB_NAME: process.env.DB_NAME || "group_alarm_db",
+  DB_OPTIONS: process.env.DB_OPTIONS || "retryWrites=true&w=majority",
+  JWT_SECRET: process.env.JWT_SECRET || "dev-secret-change-in-production",
+  JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || "7d",
+  OTP_EXPIRY_MINUTES: parseInt(process.env.OTP_EXPIRY_MINUTES || "5", 10),
+  // Separate secret for password-setup links so tokens can't be cross-purposed.
+  PASSWORD_SETUP_SECRET: process.env.PASSWORD_SETUP_SECRET || (process.env.JWT_SECRET || "dev-secret") + "-setup",
+  PASSWORD_SETUP_EXPIRES: process.env.PASSWORD_SETUP_EXPIRES || "48h",
+  CORS_ORIGIN: process.env.CORS_ORIGIN,
+  FRONTEND_URL: process.env.FRONTEND_URL || "http://localhost:5173",
+  FIREBASE_SERVICE_ACCOUNT_PATH: process.env.FIREBASE_SERVICE_ACCOUNT_PATH,
+  ROLES: {
+    SUPER_ADMIN: "super_admin",
+    ADMIN: "admin",
+    USER: "user",
+  },
+};
+
+module.exports = Env;
