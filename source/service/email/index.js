@@ -242,18 +242,11 @@ const sendMemberInviteEmail = async (email, { name, groupName, mobileNumber }) =
   return true;
 };
 
-const buildCopyLinkUrl = (targetUrl) => {
-  const base = (Env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, "");
-  return `${base}/#/copy-link?url=${encodeURIComponent(targetUrl)}`;
-};
-
 const sendPasswordSetupEmail = async (email, { name, setupUrl }) => {
   if (!isEmailConfigured()) {
     console.warn(`[Email] Email not configured — password setup link: ${setupUrl}`);
     return { sent: false, setupUrl };
   }
-
-  const copyLinkUrl = buildCopyLinkUrl(setupUrl);
 
   await deliverEmail({
     to: email,
@@ -262,16 +255,10 @@ const sendPasswordSetupEmail = async (email, { name, setupUrl }) => {
     html: syncetraDarkEmail(`
         <p>Hi <strong>${name}</strong>,</p>
         <p>Your account has been created. Click the button below to set up your password and start your journey.</p>
-        <div style="text-align:center;margin:32px 0 16px">
+        <div style="text-align:center;margin:32px 0 28px">
           <a href="${setupUrl}"
              style="background:linear-gradient(to right,#dc2626,#ea580c);color:#fff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:bold;font-size:16px;display:inline-block">
             Create Password
-          </a>
-        </div>
-        <div style="text-align:center;margin-bottom:28px">
-          <a href="${copyLinkUrl}"
-             style="color:#e2e8f0;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:bold;font-size:16px;display:inline-block;border:1px solid #475569;background:#1e293b">
-            Copy Setup Link
           </a>
         </div>
         <p style="color:#94a3b8;font-size:13px">
