@@ -5,12 +5,17 @@ const { isEmailConfigured, isBrevoConfigured, isGmailConfigured, verifyEmailConn
 console.log("────────────────────────────────────────");
 console.log(`  APP_ENV: ${EnvBoot.APP_ENV}  (OTP: ${EnvBoot.APP_ENV === "DEV" ? "shown in API/console" : "email only"})`);
 if (isBrevoConfigured()) {
-  const key = getBrevoApiKey();
-  const preview = key.startsWith("xkeysib-") && key.length > 20
-    ? `${key.slice(0, 14)}…${key.slice(-6)} (${key.length} chars)`
-    : key ? `${key.length} chars — must start with xkeysib-` : "missing";
+  let keyPreview = "configured";
+  try {
+    const key = getBrevoApiKey();
+    keyPreview = key.startsWith("xkeysib-") && key.length > 20
+      ? `${key.slice(0, 14)}…${key.slice(-6)} (${key.length} chars)`
+      : key ? `${key.length} chars — must start with xkeysib-` : "missing";
+  } catch (err) {
+    keyPreview = err.message;
+  }
   console.log(`  Email: Brevo API (sender: ${EnvBoot.EMAIL_FROM || EnvBoot.GMAIL_USER || "set EMAIL_FROM"})`);
-  console.log(`  Brevo key: ${preview}`);
+  console.log(`  Brevo key: ${keyPreview}`);
 } else if (isGmailConfigured()) {
   console.log(`  Email: Gmail SMTP (${EnvBoot.GMAIL_USER})`);
 } else {

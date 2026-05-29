@@ -326,4 +326,5 @@ module.exports = {
   isEmailConfigured,
   verifyEmailConnection,
   verifyGmailConnection,
+  getBrevoApiKey,
 };
