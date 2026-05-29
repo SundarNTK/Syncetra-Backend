@@ -17,7 +17,7 @@ const {
   addMemberSchema,
   updateMemberSchema,
 } = require("./request-objects");
-const { sendMemberInviteEmail, isGmailConfigured } = require("../../service/email");
+const { sendMemberInviteEmail, isEmailConfigured } = require("../../service/email");
 
 const normalizeEmail = (email) => email.trim().toLowerCase();
 
@@ -46,7 +46,7 @@ const resolveMembers = async (members = [], groupName = "") => {
     resolved.push({ id: user._id, email, name: m.name, mobileNumber: m.mobileNumber, isNew });
   }
 
-  if (groupName && isGmailConfigured()) {
+  if (groupName && isEmailConfigured()) {
     for (const r of resolved) {
       try {
         await sendMemberInviteEmail(r.email, {

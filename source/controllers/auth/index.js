@@ -15,7 +15,7 @@ const {
   sendPasswordSetupEmail,
   sendPasswordChangedEmail,
   sendPasswordResetOtpEmail,
-  isGmailConfigured,
+  isEmailConfigured,
 } = require("../../service/email");
 const {
   registerSchema,

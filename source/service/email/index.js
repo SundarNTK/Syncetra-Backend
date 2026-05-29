@@ -1,23 +1,35 @@
 const nodemailer = require("nodemailer");
 const Env = require("../../configurations/environment");
 
+const BREVO_API = "https://api.brevo.com/v3";
+
 let transporter = null;
 
 const isPlaceholder = (value) =>
   !value ||
   /your\.email|your_16|example\.com|changeme|xxx/i.test(String(value));
 
+const isBrevoConfigured = () => !isPlaceholder(Env.BREVO_API_KEY);
+
 const isGmailConfigured = () =>
   !isPlaceholder(Env.GMAIL_USER) && !isPlaceholder(Env.GMAIL_APP_PASSWORD);
+
+const isEmailConfigured = () => isBrevoConfigured() || isGmailConfigured();
+
+const getFromEmail = () => (Env.EMAIL_FROM || Env.GMAIL_USER || "").trim();
+
+/** Prefer Brevo on Render — Gmail SMTP is blocked on free tier. */
+const getEmailProvider = () => {
+  if (isBrevoConfigured()) return "brevo";
+  if (isGmailConfigured()) return "gmail";
+  return null;
+};
 
 const getAppPassword = () =>
   String(Env.GMAIL_APP_PASSWORD || "").replace(/\s/g, "");
 
 const getTransporter = () => {
-  if (!isGmailConfigured()) {
-    return null;
-  }
-
+  if (!isGmailConfigured()) return null;
   if (transporter) return transporter;
 
   transporter = nodemailer.createTransport({
@@ -36,72 +48,139 @@ const getTransporter = () => {
   return transporter;
 };
 
-const verifyGmailConnection = async () => {
-  const transport = getTransporter();
-  if (!transport) {
-    return { ok: false, message: "Gmail credentials not set in .env" };
+const sendViaBrevo = async ({ to, subject, text, html, fromName = "Syncetra" }) => {
+  const fromEmail = getFromEmail();
+  if (!fromEmail) {
+    throw new Error("Set EMAIL_FROM (or GMAIL_USER) to your verified Brevo sender address");
   }
-  try {
-    await transport.verify();
-    return { ok: true, message: "Gmail SMTP connection OK" };
-  } catch (err) {
-    return { ok: false, message: err.message };
+
+  const res = await fetch(`${BREVO_API}/smtp/email`, {
+    method: "POST",
+    headers: {
+      "api-key": Env.BREVO_API_KEY.trim(),
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      sender: { name: fromName, email: fromEmail },
+      to: [{ email: to }],
+      subject,
+      htmlContent: html,
+      textContent: text,
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    let detail = body;
+    try {
+      detail = JSON.parse(body).message || body;
+    } catch {
+      /* keep raw body */
+    }
+    throw new Error(`Brevo send failed: ${detail}`);
   }
 };
 
-const sendOtpEmail = async (email, otp) => {
-  if (!isGmailConfigured()) {
-    throw (
-      "Gmail is not configured. In alarm-service/.env set GMAIL_USER to your real Gmail address " +
-      "and GMAIL_APP_PASSWORD to a Google App Password (not your normal Gmail password). " +
-      "See docs/GMAIL_SETUP.md"
+const sendViaGmail = async ({ to, subject, text, html, fromName = "Syncetra" }) => {
+  const transport = getTransporter();
+  const from = getFromEmail();
+  await transport.sendMail({
+    from: `"${fromName}" <${from}>`,
+    to,
+    subject,
+    text,
+    html,
+  });
+};
+
+const deliverEmail = async ({ to, subject, text, html, fromName }) => {
+  const provider = getEmailProvider();
+  if (!provider) {
+    throw new Error(
+      "Email not configured. Set BREVO_API_KEY (Render free tier) or GMAIL_USER + GMAIL_APP_PASSWORD (local/paid Render)."
     );
   }
 
-  const transport = getTransporter();
-  const from = (Env.EMAIL_FROM || Env.GMAIL_USER).trim();
+  if (provider === "brevo") {
+    await sendViaBrevo({ to, subject, text, html, fromName });
+    return { sent: true, provider: "brevo" };
+  }
 
   try {
-    await transport.sendMail({
-      from: `"Group Alarm" <${from}>`,
-      to: email,
-      subject: "Your Group Alarm login code",
-      text: `Your OTP is ${otp}. It expires in ${Env.OTP_EXPIRY_MINUTES} minutes.`,
-      html: `
-        <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
-          <h2 style="color:#dc2626">Group Alarm</h2>
-          <p>Your one-time login code:</p>
-          <p style="font-size:32px;font-weight:bold;letter-spacing:8px;color:#111">${otp}</p>
-          <p style="color:#666;font-size:14px">Valid for ${Env.OTP_EXPIRY_MINUTES} minutes.</p>
-        </div>
-      `,
-    });
-    return true;
+    await sendViaGmail({ to, subject, text, html, fromName });
+    return { sent: true, provider: "gmail" };
   } catch (err) {
     const msg = err.message || String(err);
     if (msg.includes("535") || msg.includes("BadCredentials")) {
-      throw (
-        "Gmail rejected the login. Use a Google App Password (16 characters), not your normal Gmail password. " +
-        "Enable 2-Step Verification first, then create an App Password at https://myaccount.google.com/apppasswords"
+      throw new Error(
+        "Gmail rejected the login. Use a Google App Password (16 characters), not your normal Gmail password."
       );
     }
-    throw `Failed to send email: ${msg}`;
+    throw new Error(`Failed to send email: ${msg}`);
   }
 };
 
-const sendMemberInviteEmail = async (email, { name, groupName, mobileNumber }) => {
-  if (!isGmailConfigured()) {
-    console.warn("[Email] Gmail not configured — skip member invite email");
-    return false;
+const verifyEmailConnection = async () => {
+  if (isBrevoConfigured()) {
+    try {
+      const res = await fetch(`${BREVO_API}/account`, {
+        headers: {
+          "api-key": Env.BREVO_API_KEY.trim(),
+          Accept: "application/json",
+        },
+      });
+      if (!res.ok) {
+        return { ok: false, provider: "brevo", message: `Brevo API key invalid (${res.status})` };
+      }
+      return { ok: true, provider: "brevo", message: "Brevo API connection OK" };
+    } catch (err) {
+      return { ok: false, provider: "brevo", message: err.message };
+    }
   }
 
   const transport = getTransporter();
-  const from = (Env.EMAIL_FROM || Env.GMAIL_USER).trim();
-  const loginUrl = Env.FRONTEND_URL;
+  if (!transport) {
+    return { ok: false, provider: "gmail", message: "Gmail credentials not set in .env" };
+  }
+  try {
+    await transport.verify();
+    return { ok: true, provider: "gmail", message: "Gmail SMTP connection OK" };
+  } catch (err) {
+    return { ok: false, provider: "gmail", message: err.message };
+  }
+};
 
-  await transport.sendMail({
-    from: `"Group Alarm" <${from}>`,
+const verifyGmailConnection = verifyEmailConnection;
+
+const sendOtpEmail = async (email, otp) => {
+  await deliverEmail({
     to: email,
+    fromName: "Group Alarm",
+    subject: "Your Group Alarm login code",
+    text: `Your OTP is ${otp}. It expires in ${Env.OTP_EXPIRY_MINUTES} minutes.`,
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+        <h2 style="color:#dc2626">Group Alarm</h2>
+        <p>Your one-time login code:</p>
+        <p style="font-size:32px;font-weight:bold;letter-spacing:8px;color:#111">${otp}</p>
+        <p style="color:#666;font-size:14px">Valid for ${Env.OTP_EXPIRY_MINUTES} minutes.</p>
+      </div>
+    `,
+  });
+  return true;
+};
+
+const sendMemberInviteEmail = async (email, { name, groupName, mobileNumber }) => {
+  if (!isEmailConfigured()) {
+    console.warn("[Email] Email not configured — skip member invite email");
+    return false;
+  }
+
+  const loginUrl = Env.FRONTEND_URL;
+  await deliverEmail({
+    to: email,
+    fromName: "Group Alarm",
     subject: `You were added to group: ${groupName}`,
     html: `
       <div style="font-family:sans-serif;max-width:520px;padding:24px">
@@ -130,17 +209,14 @@ const buildCopyLinkUrl = (targetUrl) => {
 };
 
 const sendPasswordSetupEmail = async (email, { name, setupUrl }) => {
-  if (!isGmailConfigured()) {
-    console.warn(`[Email] Gmail not configured — password setup link: ${setupUrl}`);
+  if (!isEmailConfigured()) {
+    console.warn(`[Email] Email not configured — password setup link: ${setupUrl}`);
     return { sent: false, setupUrl };
   }
 
-  const transport = getTransporter();
-  const from = (Env.EMAIL_FROM || Env.GMAIL_USER).trim();
   const copyLinkUrl = buildCopyLinkUrl(setupUrl);
 
-  await transport.sendMail({
-    from: `"Syncetra" <${from}>`,
+  await deliverEmail({
     to: email,
     subject: "Set up your Syncetra password",
     text: `Hi ${name},\n\nClick the link below to create your password:\n${setupUrl}\n\nThis link expires in 48 hours.`,
@@ -174,11 +250,8 @@ const sendPasswordSetupEmail = async (email, { name, setupUrl }) => {
 };
 
 const sendPasswordChangedEmail = async (email, { name }) => {
-  if (!isGmailConfigured()) return { sent: false };
-  const transport = getTransporter();
-  const from = (Env.EMAIL_FROM || Env.GMAIL_USER).trim();
-  await transport.sendMail({
-    from: `"Syncetra" <${from}>`,
+  if (!isEmailConfigured()) return { sent: false };
+  await deliverEmail({
     to: email,
     subject: "Your Syncetra password was changed",
     html: `
@@ -193,14 +266,11 @@ const sendPasswordChangedEmail = async (email, { name }) => {
 };
 
 const sendPasswordResetOtpEmail = async (email, { name, otp, expiryMinutes }) => {
-  if (!isGmailConfigured()) {
-    console.warn(`[Email] Gmail not configured — reset OTP: ${otp}`);
+  if (!isEmailConfigured()) {
+    console.warn(`[Email] Email not configured — reset OTP: ${otp}`);
     return { sent: false, otp };
   }
-  const transport = getTransporter();
-  const from = (Env.EMAIL_FROM || Env.GMAIL_USER).trim();
-  await transport.sendMail({
-    from: `"Syncetra" <${from}>`,
+  await deliverEmail({
     to: email,
     subject: "Syncetra — Password Reset OTP",
     html: `
@@ -221,6 +291,9 @@ module.exports = {
   sendMemberInviteEmail,
   sendPasswordChangedEmail,
   sendPasswordResetOtpEmail,
+  isBrevoConfigured,
   isGmailConfigured,
+  isEmailConfigured,
+  verifyEmailConnection,
   verifyGmailConnection,
 };

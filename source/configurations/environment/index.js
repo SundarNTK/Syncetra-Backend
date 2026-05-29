@@ -5,6 +5,7 @@ const Env = {
   GMAIL_USER: process.env.GMAIL_USER,
   GMAIL_APP_PASSWORD: process.env.GMAIL_APP_PASSWORD,
   EMAIL_FROM: process.env.EMAIL_FROM,
+  BREVO_API_KEY: process.env.BREVO_API_KEY,
   TEST_ALARM_SECRET: process.env.TEST_ALARM_SECRET,
   BASE_PATH_ADMIN: process.env.BASE_PATH_ADMIN || "/api/v1/alarm/admin",
   BASE_PATH_USER: process.env.BASE_PATH_USER || "/api/v1/alarm/user",

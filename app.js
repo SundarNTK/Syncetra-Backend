@@ -1,17 +1,25 @@
 require("dotenv").config();
 
 const EnvBoot = require("./source/configurations/environment");
+const { isEmailConfigured, isBrevoConfigured, isGmailConfigured, verifyEmailConnection } = require("./source/service/email");
 console.log("────────────────────────────────────────");
 console.log(`  APP_ENV: ${EnvBoot.APP_ENV}  (OTP: ${EnvBoot.APP_ENV === "DEV" ? "shown in API/console" : "email only"})`);
-const { isGmailConfigured, verifyGmailConnection } = require("./source/service/email");
-const gmailOk = isGmailConfigured();
-console.log(`  Gmail SMTP: ${gmailOk ? EnvBoot.GMAIL_USER : "NOT configured (placeholder or missing)"}`);
-if (EnvBoot.APP_ENV === "PROD" && !gmailOk) {
-  console.warn("  ⚠ PROD requires real GMAIL_USER + GMAIL_APP_PASSWORD in .env");
+if (isBrevoConfigured()) {
+  console.log(`  Email: Brevo API (sender: ${EnvBoot.EMAIL_FROM || EnvBoot.GMAIL_USER || "set EMAIL_FROM"})`);
+} else if (isGmailConfigured()) {
+  console.log(`  Email: Gmail SMTP (${EnvBoot.GMAIL_USER})`);
+} else {
+  console.log("  Email: NOT configured");
 }
-if (gmailOk) {
-  verifyGmailConnection().then((r) => {
-    console.log(r.ok ? `  ✓ ${r.message}` : `  ✗ Gmail error: ${r.message}`);
+if (EnvBoot.APP_ENV === "PROD" && !isEmailConfigured()) {
+  console.warn("  ⚠ PROD requires BREVO_API_KEY or GMAIL_USER + GMAIL_APP_PASSWORD");
+}
+if (isEmailConfigured()) {
+  verifyEmailConnection().then((r) => {
+    console.log(r.ok ? `  ✓ ${r.message}` : `  ✗ Email error: ${r.message}`);
+    if (!r.ok && r.provider === "gmail") {
+      console.warn("  ⚠ Render free tier blocks Gmail SMTP. Add BREVO_API_KEY instead (see .env.sample).");
+    }
   });
 }
 console.log("────────────────────────────────────────");

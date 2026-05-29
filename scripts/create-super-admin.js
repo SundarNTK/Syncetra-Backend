@@ -14,7 +14,7 @@ const readline = require("readline");
 const mongoose = require("mongoose");
 const jwt      = require("jsonwebtoken");
 const Env      = require("../source/configurations/environment");
-const { sendPasswordSetupEmail, isGmailConfigured } = require("../source/service/email");
+const { sendPasswordSetupEmail, isEmailConfigured } = require("../source/service/email");
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -100,7 +100,7 @@ async function main() {
   const setupToken = signSetupToken(user._id);
   const setupUrl   = buildSetupUrl(setupToken);
 
-  if (isGmailConfigured()) {
+  if (isEmailConfigured()) {
     try {
       await sendPasswordSetupEmail(email, { name, setupUrl });
       console.log(`  ✓ Password-setup email sent → ${email}`);
