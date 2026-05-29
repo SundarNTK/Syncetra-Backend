@@ -23,6 +23,7 @@ const Env = {
   PASSWORD_SETUP_EXPIRES: process.env.PASSWORD_SETUP_EXPIRES || "48h",
   CORS_ORIGIN: process.env.CORS_ORIGIN,
   FRONTEND_URL: process.env.FRONTEND_URL || "http://localhost:5173",
+  EMAIL_LOGO_URL: process.env.EMAIL_LOGO_URL,
   FIREBASE_SERVICE_ACCOUNT_PATH: process.env.FIREBASE_SERVICE_ACCOUNT_PATH,
   ROLES: {
     SUPER_ADMIN: "super_admin",
