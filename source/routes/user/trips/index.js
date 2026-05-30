@@ -21,5 +21,6 @@ router.get("/trips/:tripId/checklists", m.listChecklists);
 router.get("/trips/:tripId/checklists/:id", m.getChecklistItem);
 router.put("/trips/:tripId/checklists/:id/toggle", m.toggleChecklistItem);
 router.get("/trips/:tripId/schedules", m.listSchedules);
+router.get("/trips/:tripId/members", m.listTripMembers);
 
 module.exports = router;
