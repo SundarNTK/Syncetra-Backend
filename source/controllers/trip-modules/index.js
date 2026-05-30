@@ -209,11 +209,57 @@ const addTask = async (req, res) => {
 const updateTask = async (req, res) => {
   try {
     await assertAdminTrip(req);
-    const { title, description, status } = req.body;
+    const isSuperAdmin = req.user?.role === Env.ROLES.SUPER_ADMIN;
+    if (!isSuperAdmin) throw "Only Super Admins can edit tasks.";
+
+    const task = await Models[db.tasks].findOne({
+      _id: req.params.id,
+      tripId: tripIdParam(req),
+      isDeleted: false,
+    });
+    if (!task) throw "Task not found";
+
+    const { title, description, status, assignedTo: rawAssignedTo } = req.body;
     const update = {};
     if (title !== undefined) update.title = String(title).trim();
     if (description !== undefined) update.description = String(description).trim();
     if (status !== undefined) update.status = status;
+
+    let newlyAssigned = [];
+    if (rawAssignedTo !== undefined) {
+      const rawIds = Array.isArray(rawAssignedTo)
+        ? rawAssignedTo
+        : rawAssignedTo ? [rawAssignedTo] : [];
+      const assignedTo = rawIds.map((id) => new mongoose.Types.ObjectId(id));
+      update.assignedTo = assignedTo;
+
+      const existingAckMap = new Map(
+        (task.acknowledgments || []).map((a) => [String(a.userId), a])
+      );
+      const oldIds = new Set((task.assignedTo || []).map(String));
+      update.acknowledgments = assignedTo.map((userId) => {
+        const uid = String(userId);
+        const existing = existingAckMap.get(uid);
+        if (existing) {
+          return {
+            userId,
+            status: existing.status || "pending",
+            comment: existing.comment || "",
+            acceptedAt: existing.acceptedAt || null,
+            respondedAt: existing.respondedAt || null,
+          };
+        }
+        return {
+          userId,
+          status: "pending",
+          comment: "",
+          acceptedAt: null,
+          respondedAt: null,
+        };
+      });
+      newlyAssigned = assignedTo.filter((id) => !oldIds.has(String(id)));
+    }
+
     if (!Object.keys(update).length) throw "No valid fields to update";
     await updateDocument(
       db.tasks,
@@ -221,6 +267,9 @@ const updateTask = async (req, res) => {
       update
     );
     const populated = await populateTask(Models[db.tasks].findById(req.params.id)).lean();
+    for (const uid of newlyAssigned) {
+      emitToUser(String(uid), "task:assigned", { task: populated });
+    }
     return responseHandler({ res, message: messages.UPDATED, response: populated });
   } catch (error) {
     return exceptionHandler({ res, error });

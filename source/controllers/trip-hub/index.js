@@ -8,7 +8,7 @@ const { assertTripAccess } = require("../trips");
 const buildExpenseSummary = (expenses, trip) => {
   const totalSpent = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
   const budget = trip.budget || 0;
-  const collected = trip.collectedAmount || 0;
+  const collected = budget;
   const memberCount = Math.max((trip.members || []).length, 1);
   const remaining = budget - totalSpent;
 
