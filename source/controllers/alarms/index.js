@@ -19,8 +19,13 @@ const {
   completeSlotIfDone,
   ALARM_STATUS,
 } = require("../../utilities/helpers/alarm-trigger");
-const { emitToGroup } = require("../../configurations/socket");
-const { scheduleAlarmSchema, stopAlarmSchema } = require("./request-objects");
+const { emitToGroupMembers } = require("../../configurations/socket");
+const {
+  resolveAlarmRecipientIds,
+  userInAlarmRecipients,
+  validateAlarmTargets,
+} = require("../../utilities/helpers/alarm-recipients");
+const { scheduleAlarmSchema, emergencyAlarmSchema, stopAlarmSchema } = require("./request-objects");
 
 const sanitizeAlarmForUser = (alarm) => {
   const { stopCode, ...rest } = alarm;
@@ -44,6 +49,7 @@ const scheduleAlarm = async (req, res) => {
 
     const stopCode = generateStopCode();
     const schedules = normalizeSchedules(body.schedules);
+    const targets = await validateAlarmTargets(body, group);
 
     const alarm = await insertNewDocument(db.alarms, {
       groupId: body.groupId,
@@ -53,6 +59,8 @@ const scheduleAlarm = async (req, res) => {
       stopCode,
       repeatType: body.repeatType,
       soundType: body.soundType || "siren",
+      targetType: targets.targetType,
+      targetMemberIds: targets.targetMemberIds,
       status: ALARM_STATUS.SCHEDULED,
       createdBy: req.user.userId,
     });
@@ -70,24 +78,26 @@ const scheduleAlarm = async (req, res) => {
 
 const triggerEmergency = async (req, res) => {
   try {
-    const { groupId, title, description } = req.body;
-    if (!groupId || !title) throw "groupId and title are required";
+    const body = validateRequest({ schema: emergencyAlarmSchema, body: req.body });
 
     const group = await findOne(db.groups, {
-      _id: groupId,
+      _id: body.groupId,
       isDeleted: false,
     });
     if (!group) throw "Group not found";
 
+    const targets = await validateAlarmTargets(body, group);
     const stopCode = generateStopCode();
     const alarm = await insertNewDocument(db.alarms, {
-      groupId,
-      title,
-      description: description || "Emergency alarm",
+      groupId: body.groupId,
+      title: body.title,
+      description: body.description || "Emergency alarm",
       alarmTime: new Date(),
       stopCode,
       repeatType: "none",
-      soundType: req.body.soundType || "siren",
+      soundType: body.soundType || "siren",
+      targetType: targets.targetType,
+      targetMemberIds: targets.targetMemberIds,
       status: ALARM_STATUS.SCHEDULED,
       isEmergency: true,
       createdBy: req.user.userId,
@@ -167,7 +177,10 @@ const cancelAlarm = async (req, res) => {
     );
     if (!alarm) throw messages.NOT_FOUND;
 
-    emitToGroup(alarm.groupId.toString(), "alarm:cancelled", {
+    const group = await findOne(db.groups, { _id: alarm.groupId, isDeleted: false });
+    const memberIds = group ? await resolveAlarmRecipientIds(alarm, group) : [];
+
+    emitToGroupMembers(alarm.groupId.toString(), memberIds, "alarm:cancelled", {
       alarmId: alarm._id.toString(),
     });
 
@@ -179,20 +192,24 @@ const cancelAlarm = async (req, res) => {
 
 const getUserActiveAlarm = async (req, res) => {
   try {
-    const userId = new mongoose.Types.ObjectId(req.user.userId);
-    const groups = await find(db.groups, { members: userId, isDeleted: false });
-    const groupIds = groups.map((g) => g._id);
-
-    const alarm = await findOne(db.alarms, {
-      groupId: { $in: groupIds },
+    const userId = req.user.userId;
+    const activeAlarms = await find(db.alarms, {
       status: ALARM_STATUS.ACTIVE,
       isDeleted: false,
     });
 
-    return responseHandler({
-      res,
-      response: alarm ? sanitizeAlarmForUser(alarm) : null,
-    });
+    for (const alarm of activeAlarms) {
+      const group = await findOne(db.groups, { _id: alarm.groupId, isDeleted: false });
+      if (!group) continue;
+      if (await userInAlarmRecipients(alarm, group, userId)) {
+        return responseHandler({
+          res,
+          response: sanitizeAlarmForUser(alarm),
+        });
+      }
+    }
+
+    return responseHandler({ res, response: null });
   } catch (error) {
     return exceptionHandler({ res, error });
   }
@@ -210,12 +227,14 @@ const stopAlarm = async (req, res) => {
     if (!alarm) throw messages.NOT_FOUND;
 
     const userId = new mongoose.Types.ObjectId(req.user.userId);
-    const groups = await find(db.groups, {
-      members: userId,
+    const group = await findOne(db.groups, {
       _id: alarm.groupId,
       isDeleted: false,
     });
-    if (!groups.length) throw messages.FORBIDDEN;
+    if (!group) throw messages.NOT_FOUND;
+
+    const isRecipient = await userInAlarmRecipients(alarm, group, userId);
+    if (!isRecipient) throw messages.FORBIDDEN;
 
     const logQuery = {
       alarmId: alarm._id,
@@ -255,12 +274,14 @@ const stopAlarm = async (req, res) => {
 
     if (!pendingLogs.length) {
       await completeSlotIfDone(alarm._id);
-      emitToGroup(alarm.groupId.toString(), "alarm:completed", {
+      const recipients = await resolveAlarmRecipientIds(alarm, group);
+      emitToGroupMembers(alarm.groupId.toString(), recipients, "alarm:completed", {
         alarmId: alarm._id.toString(),
       });
     }
 
-    emitToGroup(alarm.groupId.toString(), "alarm:stopped", {
+    const recipients = await resolveAlarmRecipientIds(alarm, group);
+    emitToGroupMembers(alarm.groupId.toString(), recipients, "alarm:stopped", {
       alarmId: alarm._id.toString(),
       userId,
     });
@@ -332,8 +353,9 @@ const getAlarmMemberPhones = async (req, res) => {
     const group = await findOne(db.groups, { _id: alarm.groupId, isDeleted: false });
     if (!group) throw "Group not found";
 
+    const recipientIds = await resolveAlarmRecipientIds(alarm, group);
     const members = await find(db.users, {
-      _id: { $in: group.members || [] },
+      _id: { $in: recipientIds },
       mobileNumber: { $exists: true, $ne: null, $ne: "" },
       isDeleted: false,
     });

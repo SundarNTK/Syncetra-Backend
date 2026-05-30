@@ -1,9 +1,10 @@
 const db = require("../../constants/db-name");
 const Models = require("../../../models");
 const { find, findOne, insertNewDocument } = require("../mongo-query");
-const { emitToGroup } = require("../../../configurations/socket");
+const { emitToGroupMembers } = require("../../../configurations/socket");
 const { sendPushToUsers, sendSmsCommandToSuperAdmin } = require("../fcm");
 const { allSlotsTriggered } = require("../alarm-schedule");
+const { resolveAlarmRecipientIds } = require("../alarm-recipients");
 
 const ALARM_STATUS = {
   SCHEDULED: "scheduled",
@@ -47,7 +48,7 @@ const triggerAlarmSlot = async (alarmId, slotId) => {
   alarm.triggeredAt = new Date();
   await alarm.save();
 
-  const memberIds = group.members || [];
+  const memberIds = await resolveAlarmRecipientIds(alarm, group);
   const payload = {
     alarmId: alarm._id.toString(),
     groupId: alarm.groupId.toString(),
@@ -58,7 +59,7 @@ const triggerAlarmSlot = async (alarmId, slotId) => {
     status: ALARM_STATUS.ACTIVE,
   };
 
-  emitToGroup(alarm.groupId.toString(), "alarm:triggered", payload);
+  emitToGroupMembers(alarm.groupId.toString(), memberIds, "alarm:triggered", payload);
 
   await sendPushToUsers(memberIds, {
     title: `ALARM: ${alarm.title}`,

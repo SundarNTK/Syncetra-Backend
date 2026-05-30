@@ -42,10 +42,20 @@ const emitToAdmins = (event, data) => {
   }
 };
 
+/** Group room + each member's personal room (user:id) — works even before join-group. */
+const emitToGroupMembers = (groupId, memberIds, event, data) => {
+  const gid = String(groupId);
+  emitToGroup(gid, event, data);
+  (memberIds || []).forEach((uid) => {
+    if (uid) emitToUser(String(uid), event, data);
+  });
+};
+
 module.exports = {
   initSocket,
   getIO,
   emitToGroup,
   emitToUser,
   emitToAdmins,
+  emitToGroupMembers,
 };

@@ -16,6 +16,14 @@ const dateScheduleSchema = Joi.object({
   times: Joi.array().items(timeSlotSchema).min(1).required(),
 });
 
+const alarmTargetSchema = {
+  targetType: Joi.string()
+    .valid("group_all", "trip_all", "selected")
+    .default("group_all")
+    .optional(),
+  targetMemberIds: Joi.array().items(Joi.string()).optional(),
+};
+
 const scheduleAlarmSchema = Joi.object({
   groupId: Joi.string().required(),
   title: Joi.string().min(2).max(200).required(),
@@ -23,6 +31,15 @@ const scheduleAlarmSchema = Joi.object({
   schedules: Joi.array().items(dateScheduleSchema).min(1).required(),
   repeatType: Joi.string().valid("none", "daily", "weekly").default("none"),
   soundType: Joi.string().valid("beep", "siren", "urgent", "chime").default("siren").optional(),
+  ...alarmTargetSchema,
+});
+
+const emergencyAlarmSchema = Joi.object({
+  groupId: Joi.string().required(),
+  title: Joi.string().min(2).max(200).required(),
+  description: Joi.string().max(500).optional().allow(""),
+  soundType: Joi.string().valid("beep", "siren", "urgent", "chime").default("siren").optional(),
+  ...alarmTargetSchema,
 });
 
 const stopAlarmSchema = Joi.object({
@@ -32,4 +49,4 @@ const stopAlarmSchema = Joi.object({
     .required(),
 });
 
-module.exports = { scheduleAlarmSchema, stopAlarmSchema };
+module.exports = { scheduleAlarmSchema, emergencyAlarmSchema, stopAlarmSchema };

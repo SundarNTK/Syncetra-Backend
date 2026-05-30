@@ -59,6 +59,12 @@ const alarmSchema = new mongoose.Schema(
       default: "siren",
     },
     isEmergency: { ...TypeBoolean, default: false },
+    targetType: {
+      ...TypeString,
+      enum: ["group_all", "trip_all", "selected"],
+      default: "group_all",
+    },
+    targetMemberIds: [{ type: mongoose.Schema.Types.ObjectId, ref: db.users }],
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: db.users,
