@@ -61,6 +61,7 @@ const buildSessionUser = (user) => ({
   email: user.email,
   mobileNumber: user.mobileNumber,
   role: user.role,
+  profileImage: user.profileImage || null,
 });
 
 // ─── register ────────────────────────────────────────────────────────────────

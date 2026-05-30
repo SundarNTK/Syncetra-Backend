@@ -173,4 +173,50 @@ const updateUser = async (req, res) => {
   }
 };
 
-module.exports = { getUsers, createMember, updateUser };
+const serializeProfile = (u) => ({
+  id: u._id,
+  _id: u._id,
+  username: u.username || null,
+  name: u.name,
+  email: u.email,
+  mobileNumber: u.mobileNumber,
+  role: u.role,
+  profileImage: u.profileImage || null,
+});
+
+const getMyProfile = async (req, res) => {
+  try {
+    const user = await findOne(db.users, { _id: req.user.userId, isDeleted: false });
+    if (!user) throw "User not found.";
+    return responseHandler({ res, response: serializeProfile(user) });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
+const updateMyProfile = async (req, res) => {
+  try {
+    const body = validateRequest({ schema: updateUserSchema, body: req.body });
+    const update = {};
+    if (body.name !== undefined) update.name = body.name;
+    if (body.mobileNumber !== undefined) update.mobileNumber = body.mobileNumber;
+    if (body.profileImage !== undefined) update.profileImage = body.profileImage || null;
+
+    const updated = await updateDocument(
+      db.users,
+      { _id: req.user.userId, isDeleted: false },
+      update
+    );
+    if (!updated) throw "User not found.";
+
+    return responseHandler({
+      res,
+      message: "Profile updated.",
+      response: serializeProfile(updated),
+    });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
+module.exports = { getUsers, createMember, updateUser, getMyProfile, updateMyProfile };
