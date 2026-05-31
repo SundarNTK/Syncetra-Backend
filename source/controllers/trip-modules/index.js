@@ -825,28 +825,37 @@ const deleteChecklist = async (req, res) => {
 const toggleChecklistItem = async (req, res) => {
   try {
     await assertMemberTrip(req);
-    const item = await findOne(db.checklists, {
+    const userId = String(req.user.userId);
+
+    const doc = await Models[db.checklists].findOne({
       _id: req.params.id,
       tripId: tripIdParam(req),
       isDeleted: false,
     });
-    if (!item) throw messages.NOT_FOUND;
-
-    const doc = await Models[db.checklists].findById(item._id);
     if (!doc) throw messages.NOT_FOUND;
+
     const assigneeIds = checklistAssignedUserIds(doc.assignedTo);
-    if (assigneeIds.length > 0 && !assigneeIds.includes(String(req.user.userId))) {
+    if (assigneeIds.length > 0 && !assigneeIds.includes(userId)) {
       throw "This checklist item is assigned to another member";
     }
-    const uid = new mongoose.Types.ObjectId(req.user.userId);
-    const packed = doc.packedBy.some((p) => p.toString() === req.user.userId);
-    if (packed) {
-      doc.packedBy = doc.packedBy.filter((p) => p.toString() !== req.user.userId);
+
+    const uid = new mongoose.Types.ObjectId(userId);
+    const alreadyPacked = doc.packedBy.some((p) => p.toString() === userId);
+    if (alreadyPacked) {
+      doc.packedBy = doc.packedBy.filter((p) => p.toString() !== userId);
     } else {
       doc.packedBy.push(uid);
     }
     await doc.save();
-    return responseHandler({ res, message: messages.UPDATED, response: doc.toObject() });
+
+    return responseHandler({
+      res,
+      message: messages.UPDATED,
+      response: {
+        _id: doc._id,
+        packedBy: doc.packedBy.map((p) => p.toString()),
+      },
+    });
   } catch (error) {
     return exceptionHandler({ res, error });
   }

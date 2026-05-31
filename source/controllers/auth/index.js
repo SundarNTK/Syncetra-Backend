@@ -1,4 +1,4 @@
-const bcrypt = require("bcryptjs");
+const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const db = require("../../utilities/constants/db-name");
 const validateRequest = require("../../utilities/validations/validate-request");
@@ -24,7 +24,7 @@ const {
   createPasswordSchema,
 } = require("./request-objects");
 
-const SALT_ROUNDS = 12;
+const SALT_ROUNDS = 10;
 const normalizeEmail = (email) => email.trim().toLowerCase();
 const normalizeUsername = (u) => u.trim().toLowerCase();
 
@@ -34,16 +34,18 @@ const signSetupToken = (userId) =>
   jwt.sign(
     { userId: String(userId), purpose: "password-setup" },
     Env.PASSWORD_SETUP_SECRET,
-    { expiresIn: Env.PASSWORD_SETUP_EXPIRES }
+    { expiresIn: Env.PASSWORD_SETUP_EXPIRES },
   );
 
 const verifySetupTokenPayload = (token) => {
   try {
     const decoded = jwt.verify(token, Env.PASSWORD_SETUP_SECRET);
-    if (decoded.purpose !== "password-setup") throw new Error("Wrong token purpose");
+    if (decoded.purpose !== "password-setup")
+      throw new Error("Wrong token purpose");
     return decoded;
   } catch (err) {
-    if (err.name === "TokenExpiredError") throw "Setup link has expired. Ask your admin to resend it.";
+    if (err.name === "TokenExpiredError")
+      throw "Setup link has expired. Ask your admin to resend it.";
     throw "Invalid or tampered setup link.";
   }
 };
@@ -105,7 +107,8 @@ const register = async (req, res) => {
 
     return responseHandler({
       res,
-      message: "Registration successful. Check your email to set up your password.",
+      message:
+        "Registration successful. Check your email to set up your password.",
       response: {
         emailSent: emailResult.sent,
         // Only expose setupUrl in DEV so developers can test without email
@@ -184,7 +187,11 @@ const verifySetupToken = async (req, res) => {
     return responseHandler({
       res,
       message: "Token valid",
-      response: { name: user.name, username: user.username, hasPassword: !!user.password },
+      response: {
+        name: user.name,
+        username: user.username,
+        hasPassword: !!user.password,
+      },
     });
   } catch (error) {
     return exceptionHandler({ res, error });
@@ -207,7 +214,11 @@ const createPassword = async (req, res) => {
 
     const hashed = await bcrypt.hash(password, SALT_ROUNDS);
 
-    const updated = await updateDocument(db.users, { _id: userId }, { password: hashed });
+    const updated = await updateDocument(
+      db.users,
+      { _id: userId },
+      { password: hashed },
+    );
     if (!updated) throw "Failed to save password. Please try again.";
 
     // Auto-login: issue a full session token so the user lands in the app directly
@@ -250,18 +261,28 @@ const updateFcmToken = async (req, res) => {
 const changePassword = async (req, res) => {
   try {
     const { oldPassword, newPassword } = req.body;
-    if (!oldPassword || !newPassword) throw "oldPassword and newPassword are required";
-    if (newPassword.length < 6) throw "New password must be at least 6 characters";
+    if (!oldPassword || !newPassword)
+      throw "oldPassword and newPassword are required";
+    if (newPassword.length < 6)
+      throw "New password must be at least 6 characters";
 
-    const user = await findOne(db.users, { _id: req.user.userId, isDeleted: false });
+    const user = await findOne(db.users, {
+      _id: req.user.userId,
+      isDeleted: false,
+    });
     if (!user) throw "Account not found";
-    if (!user.password) throw "No password set. Use the setup link from your email.";
+    if (!user.password)
+      throw "No password set. Use the setup link from your email.";
 
     const matches = await bcrypt.compare(oldPassword, user.password);
     if (!matches) throw "Current password is incorrect";
 
     const hashed = await bcrypt.hash(newPassword, SALT_ROUNDS);
-    await updateDocument(db.users, { _id: req.user.userId }, { password: hashed });
+    await updateDocument(
+      db.users,
+      { _id: req.user.userId },
+      { password: hashed },
+    );
 
     sendPasswordChangedEmail(user.email, { name: user.name }).catch(() => {});
 
@@ -279,10 +300,16 @@ const forgotPassword = async (req, res) => {
     if (!email) throw "Email is required";
 
     const normalized = normalizeEmail(email);
-    const user = await findOne(db.users, { email: normalized, isDeleted: false });
+    const user = await findOne(db.users, {
+      email: normalized,
+      isDeleted: false,
+    });
     // Always return success to avoid email enumeration
     if (!user) {
-      return responseHandler({ res, message: "If this email is registered, an OTP has been sent." });
+      return responseHandler({
+        res,
+        message: "If this email is registered, an OTP has been sent.",
+      });
     }
 
     const otp = String(Math.floor(100000 + Math.random() * 900000));
@@ -317,8 +344,10 @@ const forgotPassword = async (req, res) => {
 const resetPassword = async (req, res) => {
   try {
     const { email, otp, newPassword } = req.body;
-    if (!email || !otp || !newPassword) throw "email, otp, and newPassword are required";
-    if (newPassword.length < 6) throw "New password must be at least 6 characters";
+    if (!email || !otp || !newPassword)
+      throw "email, otp, and newPassword are required";
+    if (newPassword.length < 6)
+      throw "New password must be at least 6 characters";
 
     const normalized = normalizeEmail(email);
     const Models = require("../../models");
@@ -330,7 +359,10 @@ const resetPassword = async (req, res) => {
     });
     if (!record) throw "Invalid or expired OTP. Please request a new one.";
 
-    const user = await findOne(db.users, { email: normalized, isDeleted: false });
+    const user = await findOne(db.users, {
+      email: normalized,
+      isDeleted: false,
+    });
     if (!user) throw "Account not found";
 
     const hashed = await bcrypt.hash(newPassword, SALT_ROUNDS);
@@ -339,7 +371,10 @@ const resetPassword = async (req, res) => {
 
     sendPasswordChangedEmail(normalized, { name: user.name }).catch(() => {});
 
-    return responseHandler({ res, message: "Password reset successfully. You can now log in." });
+    return responseHandler({
+      res,
+      message: "Password reset successfully. You can now log in.",
+    });
   } catch (error) {
     return exceptionHandler({ res, error });
   }

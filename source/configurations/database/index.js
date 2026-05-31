@@ -25,6 +25,9 @@ const connectDataBase = () => {
     .connect(DB_URI, {
       maxPoolSize: parseInt(process.env.DB_MAXPOOLSIZE || "10", 10),
       minPoolSize: parseInt(process.env.DB_MINPOOLSIZE || "2", 10),
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 30000,
+      heartbeatFrequencyMS: 10000,
     })
     .then(() => console.log("MongoDB connected"))
     .catch((err) => console.error("MongoDB connection error:", err.message));
