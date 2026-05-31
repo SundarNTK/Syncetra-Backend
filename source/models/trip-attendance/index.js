@@ -18,7 +18,7 @@ const attendanceSchema = new mongoose.Schema(
     note: TypeString,
     isDeleted: { ...TypeBoolean, default: false },
   },
-  { timestamps: true, collection: db.attendance }
+  { versionKey: false, timestamps: true, collection: db.attendance }
 );
 
 attendanceSchema.index({ tripId: 1, userId: 1, checkpoint: 1 });

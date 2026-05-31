@@ -28,7 +28,7 @@ const taskSchema = new mongoose.Schema(
     createdBy:  { type: mongoose.Schema.Types.ObjectId, ref: db.users },
     isDeleted:  { ...TypeBoolean, default: false },
   },
-  { timestamps: true, collection: db.tasks }
+  { versionKey: false, timestamps: true, collection: db.tasks }
 );
 
 taskSchema.index({ tripId: 1 });

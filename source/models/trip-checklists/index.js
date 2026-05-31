@@ -15,7 +15,7 @@ const checklistSchema = new mongoose.Schema(
     isAdminItem: { ...TypeBoolean, default: false },
     isDeleted: { ...TypeBoolean, default: false },
   },
-  { timestamps: true, collection: db.checklists }
+  { versionKey: false, timestamps: true, collection: db.checklists }
 );
 
 checklistSchema.index({ tripId: 1 });

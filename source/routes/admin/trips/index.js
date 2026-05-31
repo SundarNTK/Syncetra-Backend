@@ -33,6 +33,7 @@ router.delete("/trips/:tripId/tasks/:id", m.deleteTask);
 router.get("/trips/:tripId/vehicles", m.listVehicles);
 router.post("/trips/:tripId/vehicles", m.addVehicle);
 router.put("/trips/:tripId/vehicles/:id", m.updateVehicle);
+router.delete("/trips/:tripId/vehicles/:id", m.deleteVehicle);
 
 router.get("/trips/:tripId/attendance/checkpoints", m.listAttendanceCheckpoints);
 router.get("/trips/:tripId/attendance", m.listAttendance);

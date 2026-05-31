@@ -14,7 +14,7 @@ const userSchema = new mongoose.Schema(
     profileImage: TypeString,              // base64 data-URL, stored on update
     isDeleted: { ...TypeBoolean, default: false },
   },
-  { timestamps: true, collection: db.users }
+  { versionKey: false, timestamps: true, collection: db.users }
 );
 
 userSchema.index({ mobileNumber: 1 });

@@ -11,7 +11,7 @@ const scheduleSchema = new mongoose.Schema(
     notes: TypeString,
     isDeleted: { ...TypeBoolean, default: false },
   },
-  { timestamps: true, collection: db.schedules }
+  { versionKey: false, timestamps: true, collection: db.schedules }
 );
 
 scheduleSchema.index({ tripId: 1 });

@@ -16,7 +16,7 @@ const pollSchema = new mongoose.Schema(
     isClosed: { ...TypeBoolean, default: false },
     isDeleted: { ...TypeBoolean, default: false },
   },
-  { timestamps: true, collection: db.polls }
+  { versionKey: false, timestamps: true, collection: db.polls }
 );
 
 pollSchema.index({ tripId: 1 });

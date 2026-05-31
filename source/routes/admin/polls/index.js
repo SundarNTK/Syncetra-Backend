@@ -11,6 +11,6 @@ router.get("/polls/:id", getPoll);
 router.get("/polls/:id/analytics", getPollAnalytics);
 router.post("/polls", superAdminOnly, createPoll);
 router.put("/polls/:id", adminOnly, updatePoll);
-router.delete("/polls/:id", superAdminOnly, deletePoll);
+router.delete("/polls/:id", adminOnly, deletePoll);
 
 module.exports = router;

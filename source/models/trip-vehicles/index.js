@@ -28,7 +28,7 @@ const vehicleSchema = new mongoose.Schema(
     departureAt: Date,
     isDeleted: { ...TypeBoolean, default: false },
   },
-  { timestamps: true, collection: db.vehicles }
+  { versionKey: false, timestamps: true, collection: db.vehicles }
 );
 
 vehicleSchema.index({ tripId: 1 });

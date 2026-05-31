@@ -18,7 +18,7 @@ const mediaSchema = new mongoose.Schema(
     fileName: TypeString,
     isDeleted: { ...TypeBoolean, default: false },
   },
-  { timestamps: true, collection: db.media }
+  { versionKey: false, timestamps: true, collection: db.media }
 );
 
 mediaSchema.index({ tripId: 1, isDeleted: 1 });

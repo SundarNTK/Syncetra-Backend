@@ -8,7 +8,7 @@ const otpSchema = new mongoose.Schema(
     otp: { ...TypeString, required: true },
     expiresAt: { ...TypeDate, required: true },
   },
-  { timestamps: true, collection: db.otps }
+  { versionKey: false, timestamps: true, collection: db.otps }
 );
 
 otpSchema.index({ email: 1 });

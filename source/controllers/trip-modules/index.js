@@ -380,6 +380,22 @@ const updateVehicle = async (req, res) => {
   }
 };
 
+const deleteVehicle = async (req, res) => {
+  try {
+    await assertAdminTrip(req);
+    const existing = await findOne(db.vehicles, {
+      _id: req.params.id,
+      tripId: tripIdParam(req),
+      isDeleted: false,
+    });
+    if (!existing) throw messages.NOT_FOUND;
+    await updateDocument(db.vehicles, { _id: existing._id }, { isDeleted: true });
+    return responseHandler({ res, message: messages.DELETED });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
 const userListVehicles = async (req, res) => {
   try {
     await assertMemberTrip(req);
@@ -948,6 +964,7 @@ module.exports = {
   listVehicles,
   addVehicle,
   updateVehicle,
+  deleteVehicle,
   userListVehicles,
   listAttendance,
   listAttendanceCheckpoints,

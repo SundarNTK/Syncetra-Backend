@@ -15,7 +15,7 @@ const alarmLogSchema = new mongoose.Schema(
       default: "pending",
     },
   },
-  { timestamps: true, collection: db.alarmLogs }
+  { versionKey: false, timestamps: true, collection: db.alarmLogs }
 );
 
 alarmLogSchema.index({ alarmId: 1, userId: 1 });

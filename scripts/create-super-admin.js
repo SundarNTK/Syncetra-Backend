@@ -9,6 +9,7 @@
  */
 
 require("dotenv").config();
+require("../source/configurations/mongoose");
 
 const readline = require("readline");
 const mongoose = require("mongoose");

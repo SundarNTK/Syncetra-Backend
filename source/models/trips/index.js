@@ -29,7 +29,7 @@ const tripSchema = new mongoose.Schema(
     mapLink: TypeString,
     isDeleted: { ...TypeBoolean, default: false },
   },
-  { timestamps: true, collection: db.trips }
+  { versionKey: false, timestamps: true, collection: db.trips }
 );
 
 tripSchema.index({ createdBy: 1 });

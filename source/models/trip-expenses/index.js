@@ -25,7 +25,7 @@ const expenseSchema = new mongoose.Schema(
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: db.users },
     isDeleted: { ...TypeBoolean, default: false },
   },
-  { timestamps: true, collection: db.expenses }
+  { versionKey: false, timestamps: true, collection: db.expenses }
 );
 
 expenseSchema.index({ tripId: 1 });

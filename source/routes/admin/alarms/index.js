@@ -9,9 +9,11 @@ const {
   findActiveAlarms,
   getStopCode,
   cancelAlarm,
+  deleteAlarm,
   getAlarmLogs,
   getAlarmMemberPhones,
 } = require("../../../controllers/alarms");
+const superAdminOnly = require("../../../middleware/super-admin-only");
 
 router.post("/alarms", scheduleAlarm);
 router.post("/alarms/emergency", triggerEmergency);
@@ -23,5 +25,6 @@ router.get("/alarms/:id/stop-code", getStopCode);
 router.get("/alarms/:id/logs", getAlarmLogs);
 router.put("/alarms/:id/cancel", cancelAlarm);
 router.get("/alarms/:id/member-phones", getAlarmMemberPhones);
+router.delete("/alarms/:id", superAdminOnly, deleteAlarm);
 
 module.exports = router;

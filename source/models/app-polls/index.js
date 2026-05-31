@@ -22,7 +22,7 @@ const appPollSchema = new mongoose.Schema(
     },
     isDeleted: { type: Boolean, default: false },
   },
-  { timestamps: true, collection: db.appPolls }
+  { versionKey: false, timestamps: true, collection: db.appPolls }
 );
 
 appPollSchema.index({ pollType: 1 });

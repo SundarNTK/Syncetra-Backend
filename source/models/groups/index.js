@@ -10,7 +10,7 @@ const groupSchema = new mongoose.Schema(
     members: [{ type: mongoose.Schema.Types.ObjectId, ref: db.users }],
     isDeleted: { ...TypeBoolean, default: false },
   },
-  { timestamps: true, collection: db.groups }
+  { versionKey: false, timestamps: true, collection: db.groups }
 );
 
 groupSchema.index({ createdBy: 1 });

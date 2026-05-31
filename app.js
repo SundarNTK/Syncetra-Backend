@@ -1,4 +1,5 @@
 require("dotenv").config();
+require("./source/configurations/mongoose");
 
 const EnvBoot = require("./source/configurations/environment");
 const { isEmailConfigured, isBrevoConfigured, isGmailConfigured, verifyEmailConnection, getBrevoApiKey } = require("./source/service/email");

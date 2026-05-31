@@ -369,6 +369,20 @@ const getAlarmMemberPhones = async (req, res) => {
   }
 };
 
+const deleteAlarm = async (req, res) => {
+  try {
+    const alarm = await updateDocument(
+      db.alarms,
+      { _id: req.params.id, isDeleted: false },
+      { isDeleted: true }
+    );
+    if (!alarm) throw messages.NOT_FOUND;
+    return responseHandler({ res, message: "Alarm deleted" });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
 const { testTriggerByMobile } = require("./test-trigger-handler");
 
 const triggerAlarmNow = async (req, res) => {
@@ -406,6 +420,7 @@ module.exports = {
   findActiveAlarms,
   getStopCode,
   cancelAlarm,
+  deleteAlarm,
   getUserActiveAlarm,
   stopAlarm,
   getUserAlarmHistory,

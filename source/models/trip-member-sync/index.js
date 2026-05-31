@@ -14,7 +14,7 @@ const syncSchema = new mongoose.Schema(
     lastAlarmId: { type: mongoose.Schema.Types.ObjectId, ref: db.alarms },
     hasFcmToken: { ...TypeBoolean, default: false },
   },
-  { timestamps: true, collection: db.memberSync }
+  { versionKey: false, timestamps: true, collection: db.memberSync }
 );
 
 syncSchema.index({ tripId: 1, userId: 1 }, { unique: true });

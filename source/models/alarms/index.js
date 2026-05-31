@@ -73,7 +73,7 @@ const alarmSchema = new mongoose.Schema(
     triggeredAt: TypeDate,
     isDeleted: { ...TypeBoolean, default: false },
   },
-  { timestamps: true, collection: db.alarms }
+  { versionKey: false, timestamps: true, collection: db.alarms }
 );
 
 alarmSchema.index({ alarmTime: 1, status: 1 });
