@@ -65,6 +65,16 @@ const scheduleAlarm = async (req, res) => {
       createdBy: req.user.userId,
     });
 
+    const memberIds = await resolveAlarmRecipientIds(alarm, group);
+    emitToGroupMembers(alarm.groupId.toString(), memberIds, "alarm:scheduled", {
+      alarmId: alarm._id.toString(),
+      groupId: alarm.groupId.toString(),
+      title: alarm.title,
+      description: alarm.description || "",
+      schedules: alarm.schedules,
+      soundType: alarm.soundType || "siren",
+    });
+
     return responseHandler({
       res,
       statusCode: 201,
