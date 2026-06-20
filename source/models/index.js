@@ -17,5 +17,7 @@ models[db.checklists] = require("./trip-checklists");
 models[db.schedules] = require("./trip-schedules");
 models[db.memberSync] = require("./trip-member-sync");
 models[db.appPolls] = require("./app-polls");
+models[db.itinerary] = require("./trip-itinerary");
+models[db.shareCollection] = require("./trip-share-collection");
 
 module.exports = models;

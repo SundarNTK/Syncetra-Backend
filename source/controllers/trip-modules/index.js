@@ -887,6 +887,282 @@ const addSchedule = async (req, res) => {
   }
 };
 
+/* ─── Itinerary ─────────────────────────────────────────────────────────────── */
+
+const listItinerary = async (req, res) => {
+  try {
+    await assertMemberTrip(req);
+    const items = await find(db.itinerary, { tripId: tripIdParam(req), isDeleted: false }, { orderNo: 1, sequenceOrder: 1 });
+    return responseHandler({ res, response: items });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
+const addItinerary = async (req, res) => {
+  try {
+    await assertAdminTrip(req);
+    const { pointName, locationName, description, visitDate, visitTime, duration, notes, sequenceOrder, orderNo, isReached, images, location } = req.body;
+    if (!pointName?.trim()) throw "Point name is required";
+
+    const existing = await find(db.itinerary, { tripId: tripIdParam(req), isDeleted: false }, { sequenceOrder: -1 });
+    const nextOrder = sequenceOrder !== undefined ? Number(sequenceOrder) : (existing.length > 0 ? (existing[0].sequenceOrder || 0) + 1 : 1);
+
+    const item = await insertNewDocument(db.itinerary, {
+      tripId: tripIdParam(req),
+      pointName: pointName.trim(),
+      locationName: locationName || "",
+      description: description || "",
+      visitDate: visitDate || null,
+      visitTime: visitTime || "",
+      duration: duration || "",
+      notes: notes || "",
+      sequenceOrder: nextOrder,
+      orderNo: orderNo !== undefined ? Number(orderNo) : 0,
+      isReached: !!isReached,
+      images: Array.isArray(images) ? images : [],
+      location: location && location.lat != null ? location : null,
+      createdBy: req.user.userId,
+    });
+    return responseHandler({ res, message: messages.CREATED, response: item });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
+const updateItinerary = async (req, res) => {
+  try {
+    await assertAdminTrip(req);
+    const existing = await findOne(db.itinerary, { _id: req.params.id, tripId: tripIdParam(req), isDeleted: false });
+    if (!existing) throw messages.NOT_FOUND;
+
+    const update = {};
+    for (const field of ["pointName", "locationName", "description", "visitDate", "visitTime", "duration", "notes", "sequenceOrder", "orderNo", "isReached", "images", "location"]) {
+      if (req.body[field] !== undefined) update[field] = req.body[field];
+    }
+    if (update.pointName !== undefined) {
+      update.pointName = String(update.pointName).trim();
+      if (!update.pointName) throw "Point name is required";
+    }
+    if (update.sequenceOrder !== undefined) update.sequenceOrder = Number(update.sequenceOrder);
+    if (update.orderNo !== undefined) update.orderNo = Number(update.orderNo);
+    if (update.isReached !== undefined) update.isReached = !!update.isReached;
+
+    const updated = await updateDocument(db.itinerary, { _id: existing._id }, update);
+    return responseHandler({ res, message: messages.UPDATED, response: updated });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
+const deleteItinerary = async (req, res) => {
+  try {
+    await assertAdminTrip(req);
+    const existing = await findOne(db.itinerary, { _id: req.params.id, tripId: tripIdParam(req), isDeleted: false });
+    if (!existing) throw messages.NOT_FOUND;
+    await updateDocument(db.itinerary, { _id: existing._id }, { isDeleted: true });
+    return responseHandler({ res, message: messages.DELETED });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
+const reorderItinerary = async (req, res) => {
+  try {
+    await assertAdminTrip(req);
+    const { order } = req.body;
+    if (!Array.isArray(order) || !order.length) throw "Order array is required";
+    await Promise.all(
+      order.map(({ id, sequenceOrder }) =>
+        updateDocument(db.itinerary, { _id: id, tripId: tripIdParam(req), isDeleted: false }, { sequenceOrder: Number(sequenceOrder) })
+      )
+    );
+    return responseHandler({ res, message: messages.UPDATED });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
+/* ─── Share Collection ───────────────────────────────────────────────────────── */
+
+const recalcShare = (doc) => {
+  const paidAmount = (doc.transactions || []).reduce((sum, t) => sum + (t.paymentAmount || 0), 0);
+  const pendingAmount = Math.max(0, (doc.totalShareAmount || 0) - paidAmount);
+  let paymentStatus = "pending";
+  if (paidAmount > 0 && paidAmount >= (doc.totalShareAmount || 0)) paymentStatus = "paid";
+  else if (paidAmount > 0) paymentStatus = "partial";
+  return { paidAmount, pendingAmount, paymentStatus };
+};
+
+const listShareCollections = async (req, res) => {
+  try {
+    await assertAdminTrip(req);
+    const items = await Models[db.shareCollection]
+      .find({ tripId: tripIdParam(req), isDeleted: false })
+      .populate("userId", "name email mobileNumber profileImage")
+      .populate("transactions.collectedBy", "name")
+      .sort({ createdAt: 1 })
+      .lean();
+    return responseHandler({ res, response: items });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
+const addShareCollection = async (req, res) => {
+  try {
+    await assertAdminTrip(req);
+    const { userId, totalShareAmount } = req.body;
+    if (!userId) throw "Participant user is required";
+    if (totalShareAmount === undefined || totalShareAmount === null) throw "Share amount is required";
+
+    const dup = await findOne(db.shareCollection, {
+      tripId: tripIdParam(req),
+      userId: new mongoose.Types.ObjectId(userId),
+      isDeleted: false,
+    });
+    if (dup) throw "This participant already has a share record for this trip";
+
+    const share = Number(totalShareAmount) || 0;
+    const raw = await insertNewDocument(db.shareCollection, {
+      tripId: tripIdParam(req),
+      userId: new mongoose.Types.ObjectId(userId),
+      totalShareAmount: share,
+      paidAmount: 0,
+      pendingAmount: share,
+      paymentStatus: "pending",
+      transactions: [],
+    });
+
+    const populated = await Models[db.shareCollection]
+      .findById(raw._id)
+      .populate("userId", "name email mobileNumber profileImage")
+      .lean();
+    return responseHandler({ res, message: messages.CREATED, response: populated });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
+const updateShareCollection = async (req, res) => {
+  try {
+    await assertAdminTrip(req);
+    const doc = await Models[db.shareCollection].findOne({ _id: req.params.id, tripId: tripIdParam(req), isDeleted: false });
+    if (!doc) throw messages.NOT_FOUND;
+
+    if (req.body.totalShareAmount !== undefined) doc.totalShareAmount = Number(req.body.totalShareAmount) || 0;
+    const calcs = recalcShare(doc.toObject());
+    doc.paidAmount = calcs.paidAmount;
+    doc.pendingAmount = calcs.pendingAmount;
+    doc.paymentStatus = calcs.paymentStatus;
+    await doc.save();
+
+    const populated = await Models[db.shareCollection]
+      .findById(doc._id)
+      .populate("userId", "name email mobileNumber profileImage")
+      .populate("transactions.collectedBy", "name")
+      .lean();
+    return responseHandler({ res, message: messages.UPDATED, response: populated });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
+const addPaymentTransaction = async (req, res) => {
+  try {
+    await assertAdminTrip(req);
+    const { paymentAmount, paymentMode, paymentDate, transactionRef, remarks } = req.body;
+    if (!paymentAmount) throw "Payment amount is required";
+
+    const doc = await Models[db.shareCollection].findOne({ _id: req.params.id, tripId: tripIdParam(req), isDeleted: false });
+    if (!doc) throw messages.NOT_FOUND;
+
+    const amount = Number(paymentAmount);
+    if (amount <= 0) throw "Payment amount must be greater than zero";
+    const newPaid = (doc.paidAmount || 0) + amount;
+    if (newPaid > doc.totalShareAmount) {
+      throw `Amount exceeds balance. Maximum payable: ${doc.totalShareAmount - doc.paidAmount}`;
+    }
+
+    doc.transactions.push({
+      paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
+      paymentAmount: amount,
+      paymentMode: paymentMode || "offline",
+      transactionRef: transactionRef || "",
+      remarks: remarks || "",
+      collectedBy: new mongoose.Types.ObjectId(req.user.userId),
+    });
+
+    const calcs = recalcShare(doc.toObject());
+    doc.paidAmount = calcs.paidAmount;
+    doc.pendingAmount = calcs.pendingAmount;
+    doc.paymentStatus = calcs.paymentStatus;
+    await doc.save();
+
+    const populated = await Models[db.shareCollection]
+      .findById(doc._id)
+      .populate("userId", "name email mobileNumber profileImage")
+      .populate("transactions.collectedBy", "name")
+      .lean();
+    return responseHandler({ res, message: messages.CREATED, response: populated });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
+const deletePaymentTransaction = async (req, res) => {
+  try {
+    await assertAdminTrip(req);
+    const doc = await Models[db.shareCollection].findOne({ _id: req.params.id, tripId: tripIdParam(req), isDeleted: false });
+    if (!doc) throw messages.NOT_FOUND;
+
+    const txIdx = doc.transactions.findIndex((t) => String(t._id) === req.params.paymentId);
+    if (txIdx === -1) throw "Payment record not found";
+    doc.transactions.splice(txIdx, 1);
+
+    const calcs = recalcShare(doc.toObject());
+    doc.paidAmount = calcs.paidAmount;
+    doc.pendingAmount = calcs.pendingAmount;
+    doc.paymentStatus = calcs.paymentStatus;
+    await doc.save();
+
+    const populated = await Models[db.shareCollection]
+      .findById(doc._id)
+      .populate("userId", "name email mobileNumber profileImage")
+      .populate("transactions.collectedBy", "name")
+      .lean();
+    return responseHandler({ res, message: messages.DELETED, response: populated });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
+const deleteShareCollection = async (req, res) => {
+  try {
+    await assertAdminTrip(req);
+    const existing = await findOne(db.shareCollection, { _id: req.params.id, tripId: tripIdParam(req), isDeleted: false });
+    if (!existing) throw messages.NOT_FOUND;
+    await updateDocument(db.shareCollection, { _id: existing._id }, { isDeleted: true });
+    return responseHandler({ res, message: messages.DELETED });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
+const getUserShareCollection = async (req, res) => {
+  try {
+    await assertMemberTrip(req);
+    const userId = new mongoose.Types.ObjectId(req.user.userId);
+    const item = await Models[db.shareCollection]
+      .findOne({ tripId: tripIdParam(req), userId, isDeleted: false })
+      .populate("transactions.collectedBy", "name")
+      .lean();
+    return responseHandler({ res, response: item || null });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
 const listSyncStatus = async (req, res) => {
   try {
     const trip = await assertAdminTrip(req);
@@ -1000,4 +1276,16 @@ module.exports = {
   userListExpenses,
   userListTasks,
   userPendingTasks,
+  listItinerary,
+  addItinerary,
+  updateItinerary,
+  deleteItinerary,
+  reorderItinerary,
+  listShareCollections,
+  addShareCollection,
+  updateShareCollection,
+  addPaymentTransaction,
+  deletePaymentTransaction,
+  deleteShareCollection,
+  getUserShareCollection,
 };

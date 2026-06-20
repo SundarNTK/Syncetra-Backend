@@ -15,6 +15,8 @@ const db = {
   schedules: "trip_schedules",
   memberSync: "trip_member_sync",
   appPolls: "polls",
+  itinerary: "trip_itinerary",
+  shareCollection: "trip_share_collections",
 };
 
 module.exports = db;

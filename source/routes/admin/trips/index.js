@@ -62,4 +62,17 @@ router.post("/trips/:tripId/schedules", m.addSchedule);
 
 router.get("/trips/:tripId/sync", m.listSyncStatus);
 
+router.get("/trips/:tripId/itinerary", m.listItinerary);
+router.post("/trips/:tripId/itinerary", m.addItinerary);
+router.put("/trips/:tripId/itinerary/reorder", m.reorderItinerary);
+router.put("/trips/:tripId/itinerary/:id", m.updateItinerary);
+router.delete("/trips/:tripId/itinerary/:id", m.deleteItinerary);
+
+router.get("/trips/:tripId/share-collections", m.listShareCollections);
+router.post("/trips/:tripId/share-collections", m.addShareCollection);
+router.put("/trips/:tripId/share-collections/:id", m.updateShareCollection);
+router.delete("/trips/:tripId/share-collections/:id", m.deleteShareCollection);
+router.post("/trips/:tripId/share-collections/:id/payments", m.addPaymentTransaction);
+router.delete("/trips/:tripId/share-collections/:id/payments/:paymentId", m.deletePaymentTransaction);
+
 module.exports = router;

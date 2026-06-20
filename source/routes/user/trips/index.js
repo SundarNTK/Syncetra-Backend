@@ -22,5 +22,7 @@ router.get("/trips/:tripId/checklists/:id", m.getChecklistItem);
 router.put("/trips/:tripId/checklists/:id/toggle", m.toggleChecklistItem);
 router.get("/trips/:tripId/schedules", m.listSchedules);
 router.get("/trips/:tripId/members", m.listTripMembers);
+router.get("/trips/:tripId/itinerary", m.listItinerary);
+router.get("/trips/:tripId/share-collection/me", m.getUserShareCollection);
 
 module.exports = router;
