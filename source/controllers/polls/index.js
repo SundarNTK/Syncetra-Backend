@@ -153,7 +153,7 @@ const createPoll = async (req, res) => {
 // ─── Update poll (super admin: full; admin: pollStatus only) ─────────────────
 const updatePoll = async (req, res) => {
   try {
-    const { title, question, pollStatus, options } = req.body;
+    const { title, question, pollStatus, options, pollType, tripId } = req.body;
     const existing = await Poll().findOne({ _id: req.params.id, isDeleted: false });
     if (!existing) throw "Poll not found";
 
@@ -175,6 +175,14 @@ const updatePoll = async (req, res) => {
     if (pollStatus !== undefined) {
       if (!VALID_STATUSES.includes(pollStatus)) throw `Invalid status. Must be one of: ${VALID_STATUSES.join(", ")}`;
       update.pollStatus = pollStatus;
+    }
+
+    if (isSuperAdmin && pollType !== undefined) {
+      update.pollType = pollType === "trip" ? "trip" : "general";
+      update.tripId =
+        pollType === "trip" && tripId
+          ? new mongoose.Types.ObjectId(tripId)
+          : null;
     }
 
     if (isSuperAdmin && options !== undefined) {
