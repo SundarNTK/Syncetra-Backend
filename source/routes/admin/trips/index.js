@@ -24,6 +24,7 @@ router.put("/trips/:tripId/budget", m.updateTripBudget);
 router.get("/trips/:tripId/expenses", m.listExpenses);
 router.post("/trips/:tripId/expenses", m.addExpense);
 router.put("/trips/:tripId/expenses/:id", m.updateExpense);
+router.delete("/trips/:tripId/expenses/:id", superAdminOnly, m.deleteExpense);
 
 router.get("/trips/:tripId/tasks", m.listTasks);
 router.post("/trips/:tripId/tasks", m.addTask);

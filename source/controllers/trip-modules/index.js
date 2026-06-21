@@ -135,6 +135,21 @@ const updateExpense = async (req, res) => {
   }
 };
 
+const deleteExpense = async (req, res) => {
+  try {
+    await assertAdminTrip(req);
+    const item = await updateDocument(
+      db.expenses,
+      { _id: req.params.id, tripId: tripIdParam(req), isDeleted: false },
+      { isDeleted: true }
+    );
+    if (!item) throw messages.NOT_FOUND;
+    return responseHandler({ res, message: messages.DELETED });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
 const updateTripBudget = async (req, res) => {
   try {
     await assertAdminTrip(req);
@@ -1240,6 +1255,7 @@ module.exports = {
   listExpenses,
   addExpense,
   updateExpense,
+  deleteExpense,
   updateTripBudget,
   listTasks,
   addTask,
