@@ -17,6 +17,7 @@ const db = {
   appPolls: "polls",
   itinerary: "trip_itinerary",
   shareCollection: "trip_share_collections",
+  sponsors: "trip_sponsors",
 };
 
 module.exports = db;

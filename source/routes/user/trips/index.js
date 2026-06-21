@@ -24,5 +24,6 @@ router.get("/trips/:tripId/schedules", m.listSchedules);
 router.get("/trips/:tripId/members", m.listTripMembers);
 router.get("/trips/:tripId/itinerary", m.listItinerary);
 router.get("/trips/:tripId/share-collection/me", m.getUserShareCollection);
+router.get("/trips/:tripId/sponsors", m.userListSponsors);
 
 module.exports = router;

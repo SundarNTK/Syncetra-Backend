@@ -1251,6 +1251,76 @@ const userPendingTasks = async (req, res) => {
   }
 };
 
+const listSponsors = async (req, res) => {
+  try {
+    await assertAdminTrip(req);
+    const items = await find(db.sponsors, { tripId: tripIdParam(req), isDeleted: false });
+    return responseHandler({ res, response: items });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
+const addSponsor = async (req, res) => {
+  try {
+    await assertAdminTrip(req);
+    if (!req.body.sponsorName?.trim()) throw "Sponsor name is required";
+    const item = await insertNewDocument(db.sponsors, {
+      ...req.body,
+      tripId:  tripIdParam(req),
+      amount:  Number(req.body.amount) || 0,
+      createdBy: req.user.userId,
+    });
+    return responseHandler({ res, message: messages.CREATED, response: item });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
+const updateSponsor = async (req, res) => {
+  try {
+    await assertAdminTrip(req);
+    const item = await findOne(db.sponsors, {
+      _id: req.params.id,
+      tripId: tripIdParam(req),
+      isDeleted: false,
+    });
+    if (!item) throw messages.NOT_FOUND;
+    const updated = await updateDocument(db.sponsors, { _id: item._id }, {
+      ...req.body,
+      amount: req.body.amount !== undefined ? Number(req.body.amount) : item.amount,
+    });
+    return responseHandler({ res, message: messages.UPDATED, response: updated });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
+const deleteSponsor = async (req, res) => {
+  try {
+    await assertAdminTrip(req);
+    const item = await updateDocument(
+      db.sponsors,
+      { _id: req.params.id, tripId: tripIdParam(req), isDeleted: false },
+      { isDeleted: true }
+    );
+    if (!item) throw messages.NOT_FOUND;
+    return responseHandler({ res, message: messages.DELETED });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
+const userListSponsors = async (req, res) => {
+  try {
+    await assertMemberTrip(req);
+    const items = await find(db.sponsors, { tripId: tripIdParam(req), isDeleted: false });
+    return responseHandler({ res, response: items });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
 module.exports = {
   listExpenses,
   addExpense,
@@ -1304,4 +1374,9 @@ module.exports = {
   deletePaymentTransaction,
   deleteShareCollection,
   getUserShareCollection,
+  listSponsors,
+  addSponsor,
+  updateSponsor,
+  deleteSponsor,
+  userListSponsors,
 };

@@ -76,4 +76,9 @@ router.delete("/trips/:tripId/share-collections/:id", m.deleteShareCollection);
 router.post("/trips/:tripId/share-collections/:id/payments", m.addPaymentTransaction);
 router.delete("/trips/:tripId/share-collections/:id/payments/:paymentId", m.deletePaymentTransaction);
 
+router.get("/trips/:tripId/sponsors", m.listSponsors);
+router.post("/trips/:tripId/sponsors", m.addSponsor);
+router.put("/trips/:tripId/sponsors/:id", m.updateSponsor);
+router.delete("/trips/:tripId/sponsors/:id", superAdminOnly, m.deleteSponsor);
+
 module.exports = router;

@@ -19,5 +19,6 @@ models[db.memberSync] = require("./trip-member-sync");
 models[db.appPolls] = require("./app-polls");
 models[db.itinerary] = require("./trip-itinerary");
 models[db.shareCollection] = require("./trip-share-collection");
+models[db.sponsors] = require("./trip-sponsors");
 
 module.exports = models;

@@ -5,10 +5,10 @@ const exceptionHandler = require("../../utilities/handlers/exception-handler");
 const { find, count } = require("../../utilities/helpers/mongo-query");
 const { assertTripAccess } = require("../trips");
 
-const buildExpenseSummary = (expenses, trip) => {
+const buildExpenseSummary = (expenses, trip, collectedAmount) => {
   const totalSpent = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
   const budget = trip.budget || 0;
-  const collected = budget;
+  const collected = collectedAmount ?? 0;
   const memberCount = Math.max((trip.members || []).length, 1);
   const remaining = budget - totalSpent;
 
@@ -46,7 +46,7 @@ const getTripHub = async (req, res) => {
     const trip = await assertTripAccess(req.params.tripId, req.user.userId, true);
     const tripId = new mongoose.Types.ObjectId(req.params.tripId);
 
-    const [expenses, tasks, vehicles, attendance, mediaCount, polls, checklists] =
+    const [expenses, tasks, vehicles, attendance, mediaCount, polls, checklists, shareCollections] =
       await Promise.all([
         find(db.expenses, { tripId, isDeleted: false }),
         find(db.tasks, { tripId, isDeleted: false }),
@@ -55,9 +55,11 @@ const getTripHub = async (req, res) => {
         count(db.media, { tripId, isDeleted: false }),
         find(db.polls, { tripId, isDeleted: false }),
         find(db.checklists, { tripId, isDeleted: false }),
+        find(db.shareCollection, { tripId, isDeleted: false }),
       ]);
 
-    const expenseSummary = buildExpenseSummary(expenses, trip);
+    const totalCollected = shareCollections.reduce((sum, s) => sum + (s.paidAmount || 0), 0);
+    const expenseSummary = buildExpenseSummary(expenses, trip, totalCollected);
 
     return responseHandler({
       res,
@@ -84,15 +86,17 @@ const getTripHub = async (req, res) => {
 const getTripReport = async (req, res) => {
   try {
     const trip = await assertTripAccess(req.params.tripId, req.user.userId, true);
-    const expenses = await find(db.expenses, {
-      tripId: req.params.tripId,
-      isDeleted: false,
-    });
+    const tripId = new mongoose.Types.ObjectId(req.params.tripId);
+    const [expenses, shareCollections] = await Promise.all([
+      find(db.expenses, { tripId, isDeleted: false }),
+      find(db.shareCollection, { tripId, isDeleted: false }),
+    ]);
+    const totalCollected = shareCollections.reduce((sum, s) => sum + (s.paidAmount || 0), 0);
     return responseHandler({
       res,
       response: {
         trip,
-        expenseSummary: buildExpenseSummary(expenses, trip),
+        expenseSummary: buildExpenseSummary(expenses, trip, totalCollected),
         expenses,
       },
     });
