@@ -33,24 +33,72 @@ const countUniqueVoters = (options = []) => {
 
 // ─── Eligible voters: all members (role user) for general; trip.members for trip polls
 const getGeneralMemberCount = () =>
-  Models[db.users].countDocuments({ isDeleted: false, role: Env.ROLES.USER });
+  Models[db.users].countDocuments({ isDeleted: { $ne: true }, role: Env.ROLES.USER });
 
-const getEligibleMemberCountForTripId = async (tripId) => {
-  if (!tripId) return 0;
-  const trip = await Models[db.trips].findById(tripId).select("members").lean();
-  return trip?.members?.length || 0;
+/**
+ * Collect unique member IDs for a trip from all groups linked to it.
+ * Groups are the source of truth for trip membership in this system.
+ */
+const getTripUniqueMemberIds = async (tripId) => {
+  if (!tripId) return new Set();
+  const tripOid = new mongoose.Types.ObjectId(String(tripId));
+
+  const groups = await Models[db.groups]
+    .find({ tripId: tripOid, isDeleted: { $ne: true } })
+    .select("members")
+    .lean();
+
+  const memberSet = new Set();
+  for (const g of groups) {
+    for (const m of (g.members || [])) memberSet.add(String(m));
+  }
+  return memberSet;
 };
 
-/** Batch-fetch trip member counts for many tripIds (ObjectId or string) */
+const getEligibleMemberCountForTripId = async (tripId) => {
+  const members = await getTripUniqueMemberIds(tripId);
+  return members.size;
+};
+
+/** Returns true if userId is in any group linked to the trip */
+const isTripMember = async (tripId, userId) => {
+  if (!tripId || !userId) return false;
+  const tripOid = new mongoose.Types.ObjectId(String(tripId));
+  const userOid = new mongoose.Types.ObjectId(String(userId));
+
+  const group = await Models[db.groups]
+    .findOne({ tripId: tripOid, members: userOid, isDeleted: { $ne: true } })
+    .select("_id")
+    .lean();
+  return !!group;
+};
+
+/**
+ * Batch-fetch member counts for many tripIds.
+ * Counts unique members across all groups linked to each trip.
+ */
 const getTripMemberCountMap = async (tripIds) => {
   if (!tripIds?.length) return {};
   const oids = tripIds.map((id) => new mongoose.Types.ObjectId(id));
-  const trips = await Models[db.trips].find({ _id: { $in: oids } }).select("members").lean();
+
+  const groups = await Models[db.groups]
+    .find({ tripId: { $in: oids }, isDeleted: { $ne: true } })
+    .select("tripId members")
+    .lean();
+
   const map = {};
-  for (const t of trips) {
-    map[String(t._id)] = t.members?.length || 0;
+  for (const g of groups) {
+    const key = String(g.tripId);
+    if (!map[key]) map[key] = new Set();
+    for (const m of (g.members || [])) map[key].add(String(m));
   }
-  return map;
+
+  const result = {};
+  for (const id of tripIds) {
+    const key = String(id);
+    result[key] = map[key] ? map[key].size : 0;
+  }
+  return result;
 };
 
 const enrichPollListItem = (poll, generalMemberCount, tripMemberMap) => {
@@ -92,14 +140,19 @@ const getPolls = async (req, res) => {
     if (type && type !== "all") query.pollType = type;
     if (tripId) query.tripId = new mongoose.Types.ObjectId(tripId);
 
-    // Members only see general polls + trip polls for trips they belong to
+    // Members only see general polls + trip polls for trips they belong to (via groups)
     if (isUser && !tripId) {
       const userId = new mongoose.Types.ObjectId(req.user.userId);
-      const userTrips = await Models[db.trips]
-        .find({ members: userId, isDeleted: false })
-        .select("_id")
+
+      // Groups are the source of truth for trip membership
+      const userGroups = await Models[db.groups]
+        .find({ members: userId, isDeleted: { $ne: true }, tripId: { $ne: null } })
+        .select("tripId")
         .lean();
-      const userTripIds = userTrips.map((t) => t._id);
+
+      const userTripIds = [
+        ...new Set(userGroups.filter((g) => g.tripId).map((g) => String(g.tripId))),
+      ].map((id) => new mongoose.Types.ObjectId(id));
 
       if (!type || type === "all") {
         // Replace any pollType filter with an $or covering both types
@@ -256,6 +309,12 @@ const votePoll = async (req, res) => {
 
     const idx = Number(optionIndex);
     if (idx < 0 || idx >= poll.options.length) throw "Invalid option";
+
+    // Trip polls: only members of the assigned trip may vote
+    if (poll.pollType === "trip" && poll.tripId) {
+      const eligible = await isTripMember(poll.tripId, userId);
+      if (!eligible) throw "You are not eligible to vote on this poll";
+    }
 
     const alreadyVoted = poll.options.some((o) =>
       o.votes.some((v) => v.toString() === userId.toString())
