@@ -87,9 +87,33 @@ const checkAutoComplete = async (poll) => {
 const getPolls = async (req, res) => {
   try {
     const { type, tripId } = req.query;
+    const isUser = req.user?.role === Env.ROLES.USER;
     const query = { isDeleted: false };
     if (type && type !== "all") query.pollType = type;
     if (tripId) query.tripId = new mongoose.Types.ObjectId(tripId);
+
+    // Members only see general polls + trip polls for trips they belong to
+    if (isUser && !tripId) {
+      const userId = new mongoose.Types.ObjectId(req.user.userId);
+      const userTrips = await Models[db.trips]
+        .find({ members: userId, isDeleted: false })
+        .select("_id")
+        .lean();
+      const userTripIds = userTrips.map((t) => t._id);
+
+      if (!type || type === "all") {
+        // Replace any pollType filter with an $or covering both types
+        delete query.pollType;
+        query.$or = [
+          { pollType: "general" },
+          { pollType: "trip", tripId: { $in: userTripIds } },
+        ];
+      } else if (type === "trip") {
+        // Already filtered to trip; further restrict to user's trips
+        query.tripId = { $in: userTripIds };
+      }
+      // type === "general": no extra filter needed
+    }
 
     const polls = await Poll().find(query).sort({ createdAt: -1 }).lean();
     const generalMemberCount = await getGeneralMemberCount();
