@@ -5,6 +5,7 @@ const validateRequest = require("../../utilities/validations/validate-request");
 const responseHandler = require("../../utilities/handlers/response-handler");
 const exceptionHandler = require("../../utilities/handlers/exception-handler");
 const queryHandler = require("../../utilities/handlers/query-handler");
+const Models = require("../../models");
 const {
   find,
   findOne,
@@ -196,16 +197,46 @@ const addMember = async (req, res) => {
       newMemberId = resolved;
     }
 
-    const members = [...(group.members || []).map(String), newMemberId.toString()];
-    const uniqueMembers = [...new Set(members)];
-
-    const updated = await updateDocument(
-      db.groups,
-      { _id: group._id },
-      { members: uniqueMembers.map((id) => new mongoose.Types.ObjectId(id)) }
+    const updated = await Models[db.groups].findOneAndUpdate(
+      { _id: group._id, isDeleted: false },
+      { $addToSet: { members: new mongoose.Types.ObjectId(String(newMemberId)) } },
+      { new: true }
     );
 
     return responseHandler({ res, message: messages.UPDATED, response: updated });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
+const addMembersBulk = async (req, res) => {
+  try {
+    const { userIds } = req.body;
+    if (!Array.isArray(userIds) || userIds.length === 0)
+      throw "userIds must be a non-empty array";
+
+    const group = await findOne(db.groups, { _id: req.params.id, isDeleted: false });
+    if (!group) throw messages.NOT_FOUND;
+
+    const users = await Models[db.users]
+      .find({ _id: { $in: userIds }, isDeleted: false })
+      .select("_id")
+      .lean();
+    if (users.length === 0) throw "No valid users found for the provided IDs";
+
+    const memberOids = users.map((u) => new mongoose.Types.ObjectId(String(u._id)));
+
+    const updated = await Models[db.groups].findOneAndUpdate(
+      { _id: group._id, isDeleted: false },
+      { $addToSet: { members: { $each: memberOids } } },
+      { new: true }
+    );
+
+    return responseHandler({
+      res,
+      message: `${users.length} member${users.length !== 1 ? "s" : ""} added successfully`,
+      response: updated,
+    });
   } catch (error) {
     return exceptionHandler({ res, error });
   }
@@ -313,6 +344,7 @@ module.exports = {
   updateGroup,
   deleteGroup,
   addMember,
+  addMembersBulk,
   updateMember,
   removeMember,
   findUserGroups,
