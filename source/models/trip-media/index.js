@@ -13,6 +13,7 @@ const mediaSchema = new mongoose.Schema(
       enum: ["food", "travel", "moments", "other"],
       default: "moments",
     },
+    publicId: TypeString,
     thumbUrl: TypeString,
     caption: TypeString,
     fileName: TypeString,

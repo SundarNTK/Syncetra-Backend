@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const db = require("../../utilities/constants/db-name");
 const Env = require("../../configurations/environment");
+const cloudinary = require("../../configurations/cloudinary");
 const Models = require("../../models");
 const messages = require("../../utilities/constants/messages");
 const responseHandler = require("../../utilities/handlers/response-handler");
@@ -541,14 +542,49 @@ const upsertAttendance = async (req, res) => {
   }
 };
 
+const signUpload = async (req, res) => {
+  try {
+    await assertMemberTrip(req);
+    const folder    = `syncetra/trips/${tripIdParam(req)}`;
+    const timestamp = Math.round(Date.now() / 1000);
+    const signature = cloudinary.utils.api_sign_request(
+      { folder, timestamp },
+      Env.CLOUDINARY_API_SECRET
+    );
+    return responseHandler({
+      res,
+      message: messages.SUCCESS || "OK",
+      response: {
+        timestamp,
+        signature,
+        api_key:    Env.CLOUDINARY_API_KEY,
+        cloud_name: Env.CLOUDINARY_CLOUD_NAME,
+        folder,
+      },
+    });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
 const listMedia = async (req, res) => {
   try {
-    await assertAdminTrip(req);
+    await assertChecklistTrip(req);
     const filter = { tripId: tripIdParam(req), isDeleted: false };
     if (req.query.userId) filter.uploadedBy = req.query.userId;
     if (req.query.category) filter.category = req.query.category;
     const items = await find(db.media, filter);
-    return responseHandler({ res, response: items });
+
+    // Attach uploader display names
+    const uploaderIds = [...new Set(items.map((m) => String(m.uploadedBy)).filter(Boolean))];
+    let uploaderMap = {};
+    if (uploaderIds.length) {
+      const users = await findWithProjection(db.users, { _id: { $in: uploaderIds } }, { name: 1, username: 1 });
+      users.forEach((u) => { uploaderMap[String(u._id)] = u.name || u.username || "Member"; });
+    }
+    const enriched = items.map((m) => ({ ...m, uploaderName: uploaderMap[String(m.uploadedBy)] || "Member" }));
+
+    return responseHandler({ res, response: enriched });
   } catch (error) {
     return exceptionHandler({ res, error });
   }
@@ -556,7 +592,7 @@ const listMedia = async (req, res) => {
 
 const getMediaItem = async (req, res) => {
   try {
-    await assertAdminTrip(req);
+    await assertChecklistTrip(req);
     const item = await findOne(db.media, {
       _id: req.params.id,
       tripId: tripIdParam(req),
@@ -578,10 +614,11 @@ const addMedia = async (req, res) => {
       return exceptionHandler({ res, error: "Media url is required" });
     }
 
-    const isDataUrl = url.startsWith("data:");
-    const isHttpUrl = /^https?:\/\//i.test(url);
-    if (!isDataUrl && !isHttpUrl) {
-      return exceptionHandler({ res, error: "Use a valid image/video URL or upload a file" });
+    const isCloudinaryUrl = /^https:\/\/res\.cloudinary\.com\//i.test(url);
+    const isHttpUrl       = /^https?:\/\//i.test(url);
+    const isDataUrl       = url.startsWith("data:");
+    if (!isCloudinaryUrl && !isHttpUrl && !isDataUrl) {
+      return exceptionHandler({ res, error: "Use a valid Cloudinary or HTTP URL" });
     }
 
     const type = mediaType === "video" ? "video" : "image";
@@ -592,9 +629,10 @@ const addMedia = async (req, res) => {
       tripId: tripIdParam(req),
       uploadedBy: req.user.userId,
       url,
-      thumbUrl: req.body.thumbUrl || "",
+      publicId:  req.body.publicId  || "",
+      thumbUrl:  req.body.thumbUrl  || "",
       mediaType: type,
-      category: safeCategory,
+      category:  safeCategory,
       caption,
       fileName,
     });
@@ -614,6 +652,33 @@ const deleteMedia = async (req, res) => {
     });
     if (!item) throw messages.NOT_FOUND;
     await updateDocument(db.media, { _id: item._id }, { isDeleted: true });
+    if (item.publicId) {
+      const resourceType = item.mediaType === "video" ? "video" : "image";
+      cloudinary.uploader.destroy(item.publicId, { resource_type: resourceType }).catch(() => {});
+    }
+    return responseHandler({ res, message: messages.DELETED });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
+const deleteOwnMedia = async (req, res) => {
+  try {
+    await assertMemberTrip(req);
+    const item = await findOne(db.media, {
+      _id: req.params.id,
+      tripId: tripIdParam(req),
+      isDeleted: false,
+    });
+    if (!item) throw messages.NOT_FOUND;
+    if (String(item.uploadedBy) !== String(req.user.userId)) {
+      return exceptionHandler({ res, error: "You can only delete your own uploads" });
+    }
+    await updateDocument(db.media, { _id: item._id }, { isDeleted: true });
+    if (item.publicId) {
+      const resourceType = item.mediaType === "video" ? "video" : "image";
+      cloudinary.uploader.destroy(item.publicId, { resource_type: resourceType }).catch(() => {});
+    }
     return responseHandler({ res, message: messages.DELETED });
   } catch (error) {
     return exceptionHandler({ res, error });
@@ -1342,10 +1407,12 @@ module.exports = {
   updateAttendanceRecord,
   upsertAttendance,
   userListAttendance,
+  signUpload,
   listMedia,
   getMediaItem,
   addMedia,
   deleteMedia,
+  deleteOwnMedia,
   listPolls,
   addPoll,
   votePoll,

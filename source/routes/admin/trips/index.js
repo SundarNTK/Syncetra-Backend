@@ -41,6 +41,7 @@ router.get("/trips/:tripId/attendance", m.listAttendance);
 router.post("/trips/:tripId/attendance", m.upsertAttendance);
 router.put("/trips/:tripId/attendance/:recordId", m.updateAttendanceRecord);
 
+router.post("/trips/:tripId/media/sign", m.signUpload);
 router.get("/trips/:tripId/media", m.listMedia);
 router.post("/trips/:tripId/media", m.addMedia);
 router.get("/trips/:tripId/media/:id", m.getMediaItem);
