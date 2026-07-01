@@ -16,6 +16,11 @@ const expenseSchema = new mongoose.Schema(
     splitAmong: [{ type: mongoose.Schema.Types.ObjectId, ref: db.users }],
     vehicleId: { type: mongoose.Schema.Types.ObjectId, ref: db.vehicles },
     paidBy: { type: mongoose.Schema.Types.ObjectId, ref: db.users },
+    fundSource: {
+      ...TypeString,
+      enum: ["shareCollection", "sponsor"],
+      default: "shareCollection",
+    },
     paymentStatus: {
       ...TypeString,
       enum: ["pending", "paid", "partial"],

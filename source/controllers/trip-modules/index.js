@@ -14,6 +14,7 @@ const {
   updateDocument,
 } = require("../../utilities/helpers/mongo-query");
 const { assertTripAccess } = require("../trips");
+const { resolveGoogleMapsLink } = require("../../utilities/helpers/google-maps-link");
 
 const tripIdParam = (req) => req.params.tripId;
 
@@ -422,6 +423,95 @@ const userListVehicles = async (req, res) => {
   }
 };
 
+/** Cap media arrays at 10 items each — backend safety net behind the frontend cap. */
+const capMedia = (arr) => (Array.isArray(arr) ? arr.slice(0, 10) : []);
+
+const listHotels = async (req, res) => {
+  try {
+    await assertAdminTrip(req);
+    const items = await find(db.hotels, { tripId: tripIdParam(req), isDeleted: false });
+    return responseHandler({ res, response: items });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
+const addHotel = async (req, res) => {
+  try {
+    await assertAdminTrip(req);
+    const item = await insertNewDocument(db.hotels, {
+      ...req.body,
+      tripId: tripIdParam(req),
+      createdBy: req.user.userId,
+      perDayCost: Number(req.body.perDayCost) || 0,
+      advanceAmount: Number(req.body.advanceAmount) || 0,
+      advancePaid: Boolean(req.body.advancePaid),
+      paymentCompleted: Boolean(req.body.paymentCompleted),
+      roomsCount: Number(req.body.roomsCount) || 1,
+      bedsCount: Number(req.body.bedsCount) || 1,
+      images: capMedia(req.body.images),
+      videos: capMedia(req.body.videos),
+      complimentary: Array.isArray(req.body.complimentary) ? req.body.complimentary : [],
+    });
+    return responseHandler({ res, message: messages.CREATED, response: item });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
+const updateHotel = async (req, res) => {
+  try {
+    await assertAdminTrip(req);
+    const item = await findOne(db.hotels, {
+      _id: req.params.id,
+      tripId: tripIdParam(req),
+      isDeleted: false,
+    });
+    if (!item) throw messages.NOT_FOUND;
+    const updated = await updateDocument(db.hotels, { _id: item._id }, {
+      ...req.body,
+      perDayCost: req.body.perDayCost !== undefined ? Number(req.body.perDayCost) : item.perDayCost,
+      advanceAmount: req.body.advanceAmount !== undefined ? Number(req.body.advanceAmount) : item.advanceAmount,
+      advancePaid: req.body.advancePaid !== undefined ? Boolean(req.body.advancePaid) : item.advancePaid,
+      paymentCompleted: req.body.paymentCompleted !== undefined ? Boolean(req.body.paymentCompleted) : item.paymentCompleted,
+      roomsCount: req.body.roomsCount !== undefined ? Number(req.body.roomsCount) : item.roomsCount,
+      bedsCount: req.body.bedsCount !== undefined ? Number(req.body.bedsCount) : item.bedsCount,
+      images: req.body.images !== undefined ? capMedia(req.body.images) : item.images,
+      videos: req.body.videos !== undefined ? capMedia(req.body.videos) : item.videos,
+      complimentary: Array.isArray(req.body.complimentary) ? req.body.complimentary : item.complimentary,
+    });
+    return responseHandler({ res, message: messages.UPDATED, response: updated });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
+const deleteHotel = async (req, res) => {
+  try {
+    await assertAdminTrip(req);
+    const existing = await findOne(db.hotels, {
+      _id: req.params.id,
+      tripId: tripIdParam(req),
+      isDeleted: false,
+    });
+    if (!existing) throw messages.NOT_FOUND;
+    await updateDocument(db.hotels, { _id: existing._id }, { isDeleted: true });
+    return responseHandler({ res, message: messages.DELETED });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
+const userListHotels = async (req, res) => {
+  try {
+    await assertMemberTrip(req);
+    const items = await find(db.hotels, { tripId: tripIdParam(req), isDeleted: false });
+    return responseHandler({ res, response: items });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
 const listAttendance = async (req, res) => {
   try {
     await assertAdminTrip(req);
@@ -544,7 +634,7 @@ const upsertAttendance = async (req, res) => {
 
 const signUpload = async (req, res) => {
   try {
-    await assertMemberTrip(req);
+    await assertChecklistTrip(req);
     const folder    = `syncetra/trips/${tripIdParam(req)}`;
     const timestamp = Math.round(Date.now() / 1000);
     const signature = cloudinary.utils.api_sign_request(
@@ -562,6 +652,22 @@ const signUpload = async (req, res) => {
         folder,
       },
     });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
+/** Not trip-scoped — resolves a pasted Google Maps link (incl. shortened maps.app.goo.gl
+ *  links) to lat/lng for the LocationPicker map, admin-only via the router's adminOnly guard. */
+const resolveMapLink = async (req, res) => {
+  try {
+    const url = req.body?.url;
+    if (!url) throw "A map link is required";
+    const coords = await resolveGoogleMapsLink(url);
+    if (!coords) {
+      throw "Could not detect a location from that link — paste the full Google Maps link, or pin the location manually on the map";
+    }
+    return responseHandler({ res, response: coords });
   } catch (error) {
     return exceptionHandler({ res, error });
   }
@@ -607,7 +713,7 @@ const getMediaItem = async (req, res) => {
 
 const addMedia = async (req, res) => {
   try {
-    await assertMemberTrip(req);
+    await assertChecklistTrip(req);
     const { url, mediaType, category, caption, fileName } = req.body;
 
     if (!url || typeof url !== "string") {
@@ -1151,7 +1257,7 @@ const updateShareCollection = async (req, res) => {
 const addPaymentTransaction = async (req, res) => {
   try {
     await assertAdminTrip(req);
-    const { paymentAmount, paymentMode, paymentDate, transactionRef, remarks } = req.body;
+    const { paymentAmount, paymentMode, paymentDate, transactionRef, remarks, imageUrl } = req.body;
     if (!paymentAmount) throw "Payment amount is required";
 
     const doc = await Models[db.shareCollection].findOne({ _id: req.params.id, tripId: tripIdParam(req), isDeleted: false });
@@ -1170,6 +1276,7 @@ const addPaymentTransaction = async (req, res) => {
       paymentMode: paymentMode || "offline",
       transactionRef: transactionRef || "",
       remarks: remarks || "",
+      imageUrl: imageUrl || "",
       collectedBy: new mongoose.Types.ObjectId(req.user.userId),
     });
 
@@ -1185,6 +1292,53 @@ const addPaymentTransaction = async (req, res) => {
       .populate("transactions.collectedBy", "name")
       .lean();
     return responseHandler({ res, message: messages.CREATED, response: populated });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
+/** Super-admin-only via the router's superAdminOnly guard — edits an already-recorded payment. */
+const updatePaymentTransaction = async (req, res) => {
+  try {
+    await assertAdminTrip(req);
+    const doc = await Models[db.shareCollection].findOne({ _id: req.params.id, tripId: tripIdParam(req), isDeleted: false });
+    if (!doc) throw messages.NOT_FOUND;
+
+    const tx = doc.transactions.id(req.params.paymentId);
+    if (!tx) throw "Payment record not found";
+
+    const { paymentAmount, paymentMode, paymentDate, transactionRef, remarks, imageUrl } = req.body;
+
+    if (paymentAmount !== undefined) {
+      const amount = Number(paymentAmount);
+      if (amount <= 0) throw "Payment amount must be greater than zero";
+      const otherPaid = doc.transactions.reduce(
+        (sum, t) => sum + (String(t._id) === req.params.paymentId ? 0 : (t.paymentAmount || 0)),
+        0
+      );
+      if (otherPaid + amount > doc.totalShareAmount) {
+        throw `Amount exceeds balance. Maximum payable: ${doc.totalShareAmount - otherPaid}`;
+      }
+      tx.paymentAmount = amount;
+    }
+    if (paymentMode !== undefined) tx.paymentMode = paymentMode;
+    if (paymentDate !== undefined) tx.paymentDate = paymentDate ? new Date(paymentDate) : tx.paymentDate;
+    if (transactionRef !== undefined) tx.transactionRef = transactionRef;
+    if (remarks !== undefined) tx.remarks = remarks;
+    if (imageUrl !== undefined) tx.imageUrl = imageUrl;
+
+    const calcs = recalcShare(doc.toObject());
+    doc.paidAmount = calcs.paidAmount;
+    doc.pendingAmount = calcs.pendingAmount;
+    doc.paymentStatus = calcs.paymentStatus;
+    await doc.save();
+
+    const populated = await Models[db.shareCollection]
+      .findById(doc._id)
+      .populate("userId", "name email mobileNumber profileImage")
+      .populate("transactions.collectedBy", "name")
+      .lean();
+    return responseHandler({ res, message: messages.UPDATED, response: populated });
   } catch (error) {
     return exceptionHandler({ res, error });
   }
@@ -1402,12 +1556,18 @@ module.exports = {
   updateVehicle,
   deleteVehicle,
   userListVehicles,
+  listHotels,
+  addHotel,
+  updateHotel,
+  deleteHotel,
+  userListHotels,
   listAttendance,
   listAttendanceCheckpoints,
   updateAttendanceRecord,
   upsertAttendance,
   userListAttendance,
   signUpload,
+  resolveMapLink,
   listMedia,
   getMediaItem,
   addMedia,
@@ -1438,6 +1598,7 @@ module.exports = {
   addShareCollection,
   updateShareCollection,
   addPaymentTransaction,
+  updatePaymentTransaction,
   deletePaymentTransaction,
   deleteShareCollection,
   getUserShareCollection,

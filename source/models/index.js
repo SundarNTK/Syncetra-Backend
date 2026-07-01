@@ -20,5 +20,6 @@ models[db.appPolls] = require("./app-polls");
 models[db.itinerary] = require("./trip-itinerary");
 models[db.shareCollection] = require("./trip-share-collection");
 models[db.sponsors] = require("./trip-sponsors");
+models[db.hotels] = require("./trip-hotels");
 
 module.exports = models;

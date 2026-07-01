@@ -9,6 +9,7 @@ const transactionSchema = new mongoose.Schema(
     paymentMode: { type: String, enum: ["online", "offline"], default: "offline" },
     transactionRef: TypeString,
     remarks: TypeString,
+    imageUrl: TypeString,
     collectedBy: { type: mongoose.Schema.Types.ObjectId, ref: db.users },
   },
   { _id: true, timestamps: true }

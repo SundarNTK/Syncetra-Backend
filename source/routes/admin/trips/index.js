@@ -36,6 +36,13 @@ router.post("/trips/:tripId/vehicles", m.addVehicle);
 router.put("/trips/:tripId/vehicles/:id", m.updateVehicle);
 router.delete("/trips/:tripId/vehicles/:id", m.deleteVehicle);
 
+router.get("/trips/:tripId/hotels", m.listHotels);
+router.post("/trips/:tripId/hotels", m.addHotel);
+router.put("/trips/:tripId/hotels/:id", m.updateHotel);
+router.delete("/trips/:tripId/hotels/:id", m.deleteHotel);
+
+router.post("/maps/resolve-link", m.resolveMapLink);
+
 router.get("/trips/:tripId/attendance/checkpoints", m.listAttendanceCheckpoints);
 router.get("/trips/:tripId/attendance", m.listAttendance);
 router.post("/trips/:tripId/attendance", m.upsertAttendance);
@@ -75,6 +82,7 @@ router.post("/trips/:tripId/share-collections", m.addShareCollection);
 router.put("/trips/:tripId/share-collections/:id", m.updateShareCollection);
 router.delete("/trips/:tripId/share-collections/:id", m.deleteShareCollection);
 router.post("/trips/:tripId/share-collections/:id/payments", m.addPaymentTransaction);
+router.put("/trips/:tripId/share-collections/:id/payments/:paymentId", superAdminOnly, m.updatePaymentTransaction);
 router.delete("/trips/:tripId/share-collections/:id/payments/:paymentId", m.deletePaymentTransaction);
 
 router.get("/trips/:tripId/sponsors", m.listSponsors);

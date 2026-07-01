@@ -18,6 +18,7 @@ const db = {
   itinerary: "trip_itinerary",
   shareCollection: "trip_share_collections",
   sponsors: "trip_sponsors",
+  hotels: "trip_hotels",
 };
 
 module.exports = db;

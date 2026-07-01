@@ -10,6 +10,7 @@ router.get("/tasks/pending", m.userPendingTasks);
 router.get("/trips/:tripId/tasks", m.userListTasks);
 router.post("/trips/:tripId/tasks/:id/acknowledge", m.acknowledgeTask);
 router.get("/trips/:tripId/vehicles", m.userListVehicles);
+router.get("/trips/:tripId/hotels", m.userListHotels);
 router.get("/trips/:tripId/attendance", m.userListAttendance);
 router.post("/trips/:tripId/attendance", m.upsertAttendance);
 router.post("/trips/:tripId/media/sign", m.signUpload);

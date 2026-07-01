@@ -5,12 +5,22 @@ const exceptionHandler = require("../../utilities/handlers/exception-handler");
 const { find, count } = require("../../utilities/helpers/mongo-query");
 const { assertTripAccess } = require("../trips");
 
-const buildExpenseSummary = (expenses, trip, collectedAmount) => {
+const buildExpenseSummary = (expenses, trip, collectedAmount, sponsorAmount) => {
   const totalSpent = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-  const budget = trip.budget || 0;
+  const plannedBudget = trip.budget || 0;
   const collected = collectedAmount ?? 0;
+  const sponsorTotal = sponsorAmount ?? 0;
   const memberCount = Math.max((trip.members || []).length, 1);
-  const remaining = budget - totalSpent;
+
+  // Real money only — trip.budget is a planning estimate, never a spending ceiling.
+  const shareCollectionSpent = expenses
+    .filter((e) => (e.fundSource || "shareCollection") === "shareCollection")
+    .reduce((sum, e) => sum + (e.amount || 0), 0);
+  const sponsorSpent = expenses
+    .filter((e) => e.fundSource === "sponsor")
+    .reduce((sum, e) => sum + (e.amount || 0), 0);
+  const shareCollectionRemaining = collected - shareCollectionSpent;
+  const sponsorRemaining = sponsorTotal - sponsorSpent;
 
   const byCategory = expenses.reduce((acc, e) => {
     const cat = e.category || "Other";
@@ -27,10 +37,14 @@ const buildExpenseSummary = (expenses, trip, collectedAmount) => {
   const pendingPayments = expenses.filter((e) => e.paymentStatus === "pending").length;
 
   return {
-    totalBudget: budget,
+    plannedBudget,
     totalCollected: collected,
+    totalSponsor: sponsorTotal,
     totalSpent,
-    remainingBalance: remaining,
+    shareCollectionSpent,
+    shareCollectionRemaining,
+    sponsorSpent,
+    sponsorRemaining,
     memberCount,
     perMemberShare: totalSpent / memberCount,
     categoryChart,
@@ -46,7 +60,7 @@ const getTripHub = async (req, res) => {
     const trip = await assertTripAccess(req.params.tripId, req.user.userId, true);
     const tripId = new mongoose.Types.ObjectId(req.params.tripId);
 
-    const [expenses, tasks, vehicles, attendance, mediaCount, polls, checklists, shareCollections] =
+    const [expenses, tasks, vehicles, attendance, mediaCount, polls, checklists, shareCollections, sponsors] =
       await Promise.all([
         find(db.expenses, { tripId, isDeleted: false }),
         find(db.tasks, { tripId, isDeleted: false }),
@@ -56,10 +70,12 @@ const getTripHub = async (req, res) => {
         find(db.polls, { tripId, isDeleted: false }),
         find(db.checklists, { tripId, isDeleted: false }),
         find(db.shareCollection, { tripId, isDeleted: false }),
+        find(db.sponsors, { tripId, isDeleted: false }),
       ]);
 
     const totalCollected = shareCollections.reduce((sum, s) => sum + (s.paidAmount || 0), 0);
-    const expenseSummary = buildExpenseSummary(expenses, trip, totalCollected);
+    const totalSponsor = sponsors.reduce((sum, s) => sum + (s.amount || 0), 0);
+    const expenseSummary = buildExpenseSummary(expenses, trip, totalCollected, totalSponsor);
 
     return responseHandler({
       res,
@@ -87,16 +103,18 @@ const getTripReport = async (req, res) => {
   try {
     const trip = await assertTripAccess(req.params.tripId, req.user.userId, true);
     const tripId = new mongoose.Types.ObjectId(req.params.tripId);
-    const [expenses, shareCollections] = await Promise.all([
+    const [expenses, shareCollections, sponsors] = await Promise.all([
       find(db.expenses, { tripId, isDeleted: false }),
       find(db.shareCollection, { tripId, isDeleted: false }),
+      find(db.sponsors, { tripId, isDeleted: false }),
     ]);
     const totalCollected = shareCollections.reduce((sum, s) => sum + (s.paidAmount || 0), 0);
+    const totalSponsor = sponsors.reduce((sum, s) => sum + (s.amount || 0), 0);
     return responseHandler({
       res,
       response: {
         trip,
-        expenseSummary: buildExpenseSummary(expenses, trip, totalCollected),
+        expenseSummary: buildExpenseSummary(expenses, trip, totalCollected, totalSponsor),
         expenses,
       },
     });
