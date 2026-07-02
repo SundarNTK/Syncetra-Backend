@@ -19,8 +19,22 @@ const {
   updateMemberSchema,
 } = require("./request-objects");
 const { sendMemberInviteEmail, isEmailConfigured } = require("../../service/email");
+const { removeUserVotesFromTripPolls, isTripMember } = require("../polls");
 
 const normalizeEmail = (email) => email.trim().toLowerCase();
+
+/**
+ * After a group's membership/trip link changes, drop stale votes for any
+ * user who is no longer eligible for that trip's polls (i.e. not a member
+ * of any group linked to the trip anymore).
+ */
+const syncTripPollEligibility = async (tripId, userIds = []) => {
+  if (!tripId || !userIds.length) return;
+  for (const uid of userIds) {
+    const stillEligible = await isTripMember(tripId, uid);
+    if (!stillEligible) await removeUserVotesFromTripPolls(tripId, uid);
+  }
+};
 
 const resolveMembers = async (members = [], groupName = "") => {
   const memberIds = [];
@@ -136,10 +150,13 @@ const updateGroup = async (req, res) => {
     const body = validateRequest({ schema: updateGroupSchema, body: req.body });
     const update = {};
 
+    const grp = await findOne(db.groups, { _id: req.params.id });
+    const oldMembers = (grp?.members || []).map((m) => m.toString());
+    const oldTripId = grp?.tripId || null;
+
     if (body.groupName) update.groupName = body.groupName;
     if (body.tripId !== undefined) update.tripId = body.tripId || null;
     if (body.members) {
-      const grp = await findOne(db.groups, { _id: req.params.id });
       update.members = await resolveMembers(
         body.members,
         body.groupName || grp?.groupName
@@ -152,6 +169,16 @@ const updateGroup = async (req, res) => {
       update
     );
     if (!group) throw messages.NOT_FOUND;
+
+    // Clean up stale trip-poll votes for members who lost access to the trip via this group
+    if (oldTripId) {
+      const tripChanged =
+        body.tripId !== undefined && String(oldTripId) !== String(update.tripId || "");
+      const newMembers = (update.members || oldMembers.map((id) => id)).map(String);
+      const removedMembers = oldMembers.filter((m) => !newMembers.includes(m));
+      const affected = tripChanged ? oldMembers : removedMembers;
+      await syncTripPollEligibility(oldTripId, affected);
+    }
 
     return responseHandler({ res, message: messages.UPDATED, response: group });
   } catch (error) {
@@ -297,6 +324,12 @@ const removeMember = async (req, res) => {
       { _id: groupId },
       { members: members.map((id) => new mongoose.Types.ObjectId(id)) }
     );
+
+    // Drop this member's votes from the trip's polls if they're no longer
+    // part of any group linked to the trip
+    if (group.tripId) {
+      await syncTripPollEligibility(group.tripId, [memberId]);
+    }
 
     return responseHandler({ res, message: "Member removed from group" });
   } catch (error) {

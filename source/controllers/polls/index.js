@@ -60,6 +60,34 @@ const getEligibleMemberCountForTripId = async (tripId) => {
   return members.size;
 };
 
+/**
+ * Remove a user's vote(s) from every trip poll tied to a given trip.
+ * Used when a member is removed from all groups linked to that trip so
+ * poll vote lists / counts stay consistent with current group membership.
+ */
+const removeUserVotesFromTripPolls = async (tripId, userId) => {
+  if (!tripId || !userId) return;
+  const tripOid = new mongoose.Types.ObjectId(String(tripId));
+  const userOid = new mongoose.Types.ObjectId(String(userId));
+
+  const polls = await Poll().find({
+    pollType: "trip",
+    tripId: tripOid,
+    isDeleted: false,
+    "options.votes": userOid,
+  });
+
+  for (const poll of polls) {
+    let changed = false;
+    for (const option of poll.options) {
+      const before = option.votes.length;
+      option.votes = option.votes.filter((v) => String(v) !== String(userOid));
+      if (option.votes.length !== before) changed = true;
+    }
+    if (changed) await poll.save();
+  }
+};
+
 /** Returns true if userId is in any group linked to the trip */
 const isTripMember = async (tripId, userId) => {
   if (!tripId || !userId) return false;
@@ -387,4 +415,14 @@ const getPollAnalytics = async (req, res) => {
   }
 };
 
-module.exports = { getPolls, getPoll, createPoll, updatePoll, deletePoll, votePoll, getPollAnalytics };
+module.exports = {
+  getPolls,
+  getPoll,
+  createPoll,
+  updatePoll,
+  deletePoll,
+  votePoll,
+  getPollAnalytics,
+  isTripMember,
+  removeUserVotesFromTripPolls,
+};
