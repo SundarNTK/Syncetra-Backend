@@ -1077,7 +1077,7 @@ const addSchedule = async (req, res) => {
 
 const listItinerary = async (req, res) => {
   try {
-    await assertMemberTrip(req);
+    await assertChecklistTrip(req);
     const items = await find(db.itinerary, { tripId: tripIdParam(req), isDeleted: false }, { orderNo: 1, sequenceOrder: 1 });
     return responseHandler({ res, response: items });
   } catch (error) {
