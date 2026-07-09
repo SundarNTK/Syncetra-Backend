@@ -13,6 +13,7 @@ const superAdminOnly = require("../../../middleware/super-admin-only");
 
 router.get("/trips", listTrips);
 router.post("/trips", superAdminOnly, createTrip);
+router.post("/trips/epass/sign", superAdminOnly, m.signEpassUpload);
 router.get("/trips/:id", getTrip);
 router.put("/trips/:id", superAdminOnly, updateTrip);
 router.delete("/trips/:id", superAdminOnly, deleteTrip);

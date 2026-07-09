@@ -27,6 +27,8 @@ const tripSchema = new mongoose.Schema(
     latitude: TypeNumber,
     longitude: TypeNumber,
     mapLink: TypeString,
+    isEpassTaken: { ...TypeBoolean, default: false },
+    epassDocuments: { type: [String], default: [] },
     isDeleted: { ...TypeBoolean, default: false },
   },
   { versionKey: false, timestamps: true, collection: db.trips }

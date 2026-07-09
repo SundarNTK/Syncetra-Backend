@@ -39,6 +39,8 @@ const TRIP_UPDATE_FIELDS = [
   "latitude",
   "longitude",
   "mapLink",
+  "isEpassTaken",
+  "epassDocuments",
 ];
 
 const pickTripUpdate = (body) => {
@@ -49,6 +51,13 @@ const pickTripUpdate = (body) => {
   if (update.budget !== undefined) update.budget = Number(update.budget) || 0;
   if (update.collectedAmount !== undefined) {
     update.collectedAmount = Number(update.collectedAmount) || 0;
+  }
+  if (update.isEpassTaken !== undefined) {
+    update.isEpassTaken = Boolean(update.isEpassTaken);
+    if (!update.isEpassTaken) update.epassDocuments = [];
+  }
+  if (update.epassDocuments !== undefined) {
+    update.epassDocuments = Array.isArray(update.epassDocuments) ? update.epassDocuments : [];
   }
   return { ...update, ...parseLocationFields(body) };
 };
@@ -93,6 +102,8 @@ const createTrip = async (req, res) => {
       coverImage,
       tripType,
       status,
+      isEpassTaken,
+      epassDocuments,
     } = req.body;
     if (!tripName) throw "Trip name is required";
 
@@ -109,6 +120,8 @@ const createTrip = async (req, res) => {
       coverImage: coverImage || "",
       tripType: tripType || "group",
       status: status || "planned",
+      isEpassTaken: Boolean(isEpassTaken),
+      epassDocuments: isEpassTaken && Array.isArray(epassDocuments) ? epassDocuments : [],
       ...parseLocationFields(req.body),
     });
 

@@ -657,6 +657,32 @@ const signUpload = async (req, res) => {
   }
 };
 
+/** Not trip-scoped — signs Epass document uploads, usable before a trip exists yet
+ *  (route guarded by superAdminOnly, matching createTrip). */
+const signEpassUpload = async (req, res) => {
+  try {
+    const folder    = "syncetra/trips/epass";
+    const timestamp = Math.round(Date.now() / 1000);
+    const signature = cloudinary.utils.api_sign_request(
+      { folder, timestamp },
+      Env.CLOUDINARY_API_SECRET
+    );
+    return responseHandler({
+      res,
+      message: messages.SUCCESS || "OK",
+      response: {
+        timestamp,
+        signature,
+        api_key:    Env.CLOUDINARY_API_KEY,
+        cloud_name: Env.CLOUDINARY_CLOUD_NAME,
+        folder,
+      },
+    });
+  } catch (error) {
+    return exceptionHandler({ res, error });
+  }
+};
+
 /** Not trip-scoped — resolves a pasted Google Maps link (incl. shortened maps.app.goo.gl
  *  links) to lat/lng for the LocationPicker map, admin-only via the router's adminOnly guard. */
 const resolveMapLink = async (req, res) => {
@@ -1567,6 +1593,7 @@ module.exports = {
   upsertAttendance,
   userListAttendance,
   signUpload,
+  signEpassUpload,
   resolveMapLink,
   listMedia,
   getMediaItem,
